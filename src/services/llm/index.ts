@@ -45,3 +45,4 @@ export type { LLMClient, LLMStreamRequest, LLMStreamHandlers, ChatMessageInput, 
 export type { LLMConfig } from './config';
 export { HermesRunsClient, type RunEvent, type RunRequest, type RunStreamCallbacks, callbacksFromStreamHandlers } from './runs-client';
 export { HermesGatewayClient, type HermesRequestContext } from './hermes-client';
+export { HermesSessionsClient, type HermesSession } from './sessions-client';
