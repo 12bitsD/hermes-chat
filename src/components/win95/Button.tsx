@@ -1,21 +1,25 @@
 import React, { useState, useCallback } from 'react';
-import { Pressable, Text, View, StyleSheet, TextStyle, ViewStyle, GestureResponderEvent } from 'react-native';
-import { palette, type, space } from '../../theme';
+import { Pressable, Text, StyleSheet, TextStyle, ViewStyle, GestureResponderEvent } from 'react-native';
+import { neutral, type, space, radius } from '../../theme';
+import { useTheme } from '../../theme';
 
 export interface Win95ButtonProps {
   label: string;
   onPress?: (e: GestureResponderEvent) => void;
   disabled?: boolean;
-  default?: boolean; // visually "primary" — thick blue outline
+  default?: boolean; // primary (filled with accent)
   small?: boolean;
+  ghost?: boolean;   // transparent until pressed
   style?: ViewStyle;
   textStyle?: TextStyle;
   testID?: string;
 }
 
 /**
- * Win95 push button. Two states: raised (idle) and pressed (active).
- * "Default" gets the dotted focus ring.
+ * Flat button. Two visual variants:
+ *   - filled (default true) for primary actions: accent bg, white text
+ *   - ghost: transparent, accent text, light hover background
+ * No 3D bevels, no dotted focus ring, no sun-key indent — just a soft press state.
  */
 export const Win95Button: React.FC<Win95ButtonProps> = ({
   label,
@@ -23,15 +27,22 @@ export const Win95Button: React.FC<Win95ButtonProps> = ({
   disabled = false,
   default: isDefault = false,
   small = false,
+  ghost = false,
   style,
   textStyle,
   testID,
 }) => {
+  const accent = useTheme();
   const [pressed, setPressed] = useState(false);
-  const [focused, setFocused] = useState(false);
-
   const onPressIn = useCallback(() => setPressed(true), []);
   const onPressOut = useCallback(() => setPressed(false), []);
+
+  // Resolve colors based on variant + state
+  const filled = isDefault && !ghost;
+  const bg = filled
+    ? (pressed ? accent.accent.fg : accent.accent.fg)
+    : (pressed ? accent.accent.soft : 'transparent');
+  const fg = filled ? accent.accent.fgOn : accent.accent.fg;
 
   return (
     <Pressable
@@ -39,15 +50,12 @@ export const Win95Button: React.FC<Win95ButtonProps> = ({
       onPress={onPress}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
       disabled={disabled}
       hitSlop={4}
       style={[
         styles.base,
         small ? styles.small : styles.normal,
-        pressed ? styles.pressed : styles.raised,
-        disabled ? styles.disabled : null,
+        { backgroundColor: bg, borderRadius: radius.md },
         style,
       ]}
     >
@@ -56,77 +64,34 @@ export const Win95Button: React.FC<Win95ButtonProps> = ({
         style={[
           styles.label,
           small ? styles.labelSmall : null,
-          pressed ? styles.labelPressed : null,
-          disabled ? styles.labelDisabled : null,
+          { color: fg, opacity: disabled ? 0.4 : 1 },
           textStyle,
         ]}
       >
         {label}
       </Text>
-      {isDefault && focused ? <View style={styles.focusOutline} pointerEvents="none" /> : null}
     </Pressable>
   );
 };
 
 const styles = StyleSheet.create({
   base: {
-    backgroundColor: palette.surface,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
   },
   normal: {
-    paddingHorizontal: space.lg,
-    paddingVertical: space.xs,
-    minHeight: 30,
-    minWidth: 75,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    minHeight: 36,
+    minWidth: 64,
   },
   small: {
     paddingHorizontal: space.sm,
-    paddingVertical: 2,
-    minHeight: 22,
-    minWidth: 50,
+    paddingVertical: space.xs + 1,
+    minHeight: 28,
+    minWidth: 0,
   },
-  raised: {
-    borderTopColor: palette.bevelHi,
-    borderLeftColor: palette.bevelHi,
-    borderRightColor: palette.bevelLo,
-    borderBottomColor: palette.bevelLo,
-    borderTopWidth: 2,
-    borderLeftWidth: 2,
-    borderRightWidth: 2,
-    borderBottomWidth: 2,
-  },
-  pressed: {
-    borderTopColor: palette.bevelLo,
-    borderLeftColor: palette.bevelLo,
-    borderRightColor: palette.bevelHi,
-    borderBottomColor: palette.bevelHi,
-    borderTopWidth: 2,
-    borderLeftWidth: 2,
-    borderRightWidth: 2,
-    borderBottomWidth: 2,
-    paddingTop: space.xs + 1, // shift text 1px to mimic sun-key indent
-  },
-  disabled: { opacity: 0.5 },
-  label: { ...type.ui, color: palette.ink },
-  labelSmall: { fontSize: 10 },
-  labelPressed: { paddingTop: 1 },
-  labelDisabled: { color: palette.bevelDark },
-  focusOutline: {
-    position: 'absolute',
-    top: 4,
-    left: 4,
-    right: 4,
-    bottom: 4,
-    borderTopColor: 'transparent',
-    borderBottomColor: 'transparent',
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderStyle: 'dotted',
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-  },
+  label: { ...type.uiBold, fontSize: 13 },
+  labelSmall: { fontSize: 12 },
 });

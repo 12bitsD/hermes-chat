@@ -4,12 +4,12 @@ import {
   ActivityIndicator, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { palette, type, space, bevel } from '../theme';
+import { neutral, type, space, radius, bevel, palette } from '../theme';
 import { Button } from './win95';
 import { useAppStore } from '../store/app';
 import { syncLLMFromSettings, getLLMClient } from '../store/persistence';
 import { defaultEndpoint } from '../services/llm/config';
-import { themes } from '../theme/themes';
+import { accentList } from '../theme';
 import { haptic } from '../utils/haptic';
 
 export interface SettingsPanelProps {
@@ -31,7 +31,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
   const [temperature, setTemperature] = useState(String(settings.temperature ?? ''));
   const [streamChunkMs, setStreamChunkMs] = useState(String(settings.streamChunkMs));
   const [haptics, setHaptics] = useState(settings.enableHaptics);
-  const [theme, setTheme] = useState(settings.theme);
+  const [accent, setAccent] = useState(settings.accent);
 
   // Probe state
   const [probing, setProbing] = useState(false);
@@ -48,7 +48,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
     setTemperature(String(settings.temperature ?? ''));
     setStreamChunkMs(String(settings.streamChunkMs));
     setHaptics(settings.enableHaptics);
-    setTheme(settings.theme);
+    setAccent(settings.accent);
     setProbeResult(null);
   }, [open, settings]);
 
@@ -92,12 +92,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
       temperature: temperature.trim() === '' ? undefined : Number(temperature),
       streamChunkMs: Math.max(0, Number(streamChunkMs) || 0),
       enableHaptics: haptics,
-      theme,
+      accent,
     });
     syncLLMFromSettings();
     haptic('success');
     onClose();
-  }, [provider, endpoint, apiKey, model, systemPrompt, temperature, streamChunkMs, haptics, theme, updateSettings, onClose]);
+  }, [provider, endpoint, apiKey, model, systemPrompt, temperature, streamChunkMs, haptics, accent, updateSettings, onClose]);
 
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
@@ -203,29 +203,28 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
           ) : null}
 
           <Section title="Appearance">
-            <Text style={styles.label}>Theme</Text>
-            <View style={styles.themeGrid}>
-              {(['win95', 'win98', 'system7', 'sakura'] as const).map((id) => {
-                const t = themes[id];
-                const active = theme === id;
+            <Text style={styles.label}>Accent</Text>
+            <View style={styles.accentGrid}>
+              {accentList.map((a) => {
+                const active = accent === a.name;
                 return (
                   <Pressable
-                    key={id}
-                    onPress={() => { haptic('light'); setTheme(id); }}
+                    key={a.name}
+                    onPress={() => { haptic('light'); setAccent(a.name); }}
                     style={[
-                      styles.themeCard,
-                      active ? styles.themeCardActive : null,
+                      styles.accentCard,
+                      active ? styles.accentCardActive : null,
                     ]}
                   >
-                    <View style={[styles.themeSwatch, { backgroundColor: t.palette.desktop }]} />
-                    <Text style={[styles.themeName, active ? styles.themeNameActive : null]}>
-                      {t.displayName}
+                    <View style={[styles.accentSwatch, { backgroundColor: a.accent.fg }]} />
+                    <Text style={[styles.accentName, active ? styles.accentNameActive : null]}>
+                      {a.displayName}
                     </Text>
                   </Pressable>
                 );
               })}
             </View>
-            <Text style={styles.hint}>The sakura theme is for the true believers 🌸</Text>
+            <Text style={styles.hint}>Pick the accent that fits your mood.</Text>
           </Section>
         </ScrollView>
 
@@ -321,22 +320,21 @@ const styles = StyleSheet.create({
   segmentedTextActive: { color: palette.titlebarActiveText, fontWeight: 'bold' },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
   probeText: { ...type.ui, marginTop: 6, fontStyle: 'italic' },
-  themeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  themeCard: {
-    width: '48%', padding: 8,
-    backgroundColor: palette.surface,
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    borderTopWidth: 1, borderLeftWidth: 1, borderTopColor: palette.bevelHi, borderLeftColor: palette.bevelHi,
-    borderRightWidth: 1, borderBottomWidth: 1, borderRightColor: palette.bevelLo, borderBottomColor: palette.bevelLo,
+  accentGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  accentCard: {
+    width: '48%', padding: space.sm,
+    flexDirection: 'row', alignItems: 'center', gap: space.sm,
+    borderRadius: radius.md,
+    borderWidth: 1, borderColor: neutral.border,
+    backgroundColor: neutral.surface,
   },
-  themeCardActive: {
-    borderTopColor: palette.bevelLo, borderLeftColor: palette.bevelLo,
-    borderRightColor: palette.bevelHi, borderBottomColor: palette.bevelHi,
-    backgroundColor: palette.surfaceAlt,
+  accentCardActive: {
+    borderColor: neutral.ink,
+    backgroundColor: neutral.surfaceMuted,
   },
-  themeSwatch: { width: 28, height: 28, borderRadius: 0, borderWidth: 1, borderColor: '#00000040' },
-  themeName: { ...type.ui, color: palette.ink, flex: 1 },
-  themeNameActive: { fontWeight: 'bold' },
+  accentSwatch: { width: 24, height: 24, borderRadius: radius.sm },
+  accentName: { ...type.ui, color: neutral.ink, flex: 1 },
+  accentNameActive: { fontWeight: '600' },
   footer: {
     flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 8,
     paddingVertical: 8, borderTopWidth: 1, borderTopColor: palette.bevelDark, backgroundColor: palette.surface,

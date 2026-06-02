@@ -1,21 +1,21 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView, TextInput,
-  Modal, Animated, Platform, StatusBar, Dimensions,
+  Modal, Animated, Platform, StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { palette, type, space, bevel } from '../theme';
-import { Button, Panel } from '../components/win95';
+import { neutral, type, space, radius, useTheme } from '../theme';
 import { ChatView } from '../components/chat/ChatView';
 import { PromptNavigator } from '../components/prompt-nav/PromptNavigator';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { useAppStore } from '../store/app';
 import { getLLMClient } from '../store/persistence';
-import { isNarrow, isAndroid, isNative, watchScreen } from '../utils/platform';
+import { isNarrow, isNative, watchScreen } from '../utils/platform';
 import { haptic } from '../utils/haptic';
 
 export const MainScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const accent = useTheme();
   const conversations = useAppStore((s) => s.conversations);
   const order = useAppStore((s) => s.conversationOrder);
   const activeId = useAppStore((s) => s.activeConversationId);
@@ -23,7 +23,6 @@ export const MainScreen: React.FC = () => {
   const createConv = useAppStore((s) => s.createConversation);
   const renameConv = useAppStore((s) => s.renameConversation);
   const deleteConv = useAppStore((s) => s.deleteConversation);
-  const clearMessages = useAppStore((s) => s.clearMessages);
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
@@ -32,12 +31,10 @@ export const MainScreen: React.FC = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [narrow, setNarrow] = useState(isNarrow);
 
-  // Watch for size changes (rotate, foldable, etc.)
   useEffect(() => {
     return watchScreen((win) => setNarrow(win.width < 768));
   }, []);
 
-  // Periodic provider reachability probe so the status dot stays honest
   const settings = useAppStore((s) => s.settings);
   const [providerOk, setProviderOk] = useState<boolean | null>(null);
   useEffect(() => {
@@ -56,7 +53,6 @@ export const MainScreen: React.FC = () => {
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [settings.llmProvider, settings.llmEndpoint, settings.llmApiKey]);
 
-  // Close drawer on active conversation change (mobile only)
   useEffect(() => {
     if (narrow) setDrawerOpen(false);
   }, [activeId, narrow]);
@@ -65,10 +61,10 @@ export const MainScreen: React.FC = () => {
 
   return (
     <View style={[styles.root, { paddingTop: isNative ? insets.top : 0 }]}>
-      <StatusBar barStyle="dark-content" backgroundColor={palette.surface} />
+      <StatusBar barStyle="dark-content" backgroundColor={neutral.bg} />
 
-      {/* ── Top app bar — mobile / universal ────────────────────────────── */}
-      <View style={[styles.appBar, bevel.raisedThin]}>
+      {/* ── App bar ─────────────────────────────────────────────────── */}
+      <View style={[styles.appBar, { backgroundColor: neutral.bg, borderBottomColor: neutral.border }]}>
         {narrow ? (
           <Pressable hitSlop={12} onPress={() => setDrawerOpen(true)} style={styles.iconBtn}>
             <Text style={styles.iconBtnText}>☰</Text>
@@ -84,7 +80,7 @@ export const MainScreen: React.FC = () => {
             style={styles.titleInput}
             autoFocus
             placeholder="Session title"
-            placeholderTextColor={palette.inkMuted}
+            placeholderTextColor={neutral.inkMuted}
           />
         ) : (
           <Pressable
@@ -93,7 +89,7 @@ export const MainScreen: React.FC = () => {
           >
             <Text numberOfLines={1} style={styles.appBarTitle}>{active?.title ?? 'Hermes'}</Text>
             <Text numberOfLines={1} style={styles.appBarSubtitle}>
-              {narrow ? 'tap to rename' : `${Object.keys(conversations).length} sessions · tap to rename`}
+              {`${Object.keys(conversations).length} sessions`}
             </Text>
           </Pressable>
         )}
@@ -113,23 +109,21 @@ export const MainScreen: React.FC = () => {
             </Pressable>
           ) : null}
           <Pressable hitSlop={12} onPress={() => { haptic('medium'); createConv(); }} style={styles.iconBtn}>
-            <Text style={[styles.iconBtnText, { color: palette.ink }]}>＋</Text>
+            <Text style={[styles.iconBtnText, { color: accent.accent.fg }]}>＋</Text>
           </Pressable>
         </View>
       </View>
 
-      {/* ── Body ────────────────────────────────────────────────────────── */}
+      {/* ── Body ────────────────────────────────────────────────────── */}
       {narrow ? (
-        // Mobile: chat fills the screen
         <View style={styles.mobileBody}>
           <ChatView />
         </View>
       ) : (
-        // Desktop / wide: three-pane window
         <DesktopLayout onOpenSettings={() => setSettingsOpen(true)} />
       )}
 
-      {/* ── Mobile drawer (sessions) ────────────────────────────────────── */}
+      {/* ── Mobile drawer ───────────────────────────────────────────── */}
       {narrow ? (
         <SessionDrawer
           open={drawerOpen}
@@ -144,7 +138,7 @@ export const MainScreen: React.FC = () => {
         />
       ) : null}
 
-      {/* ── Mobile prompts sheet ────────────────────────────────────────── */}
+      {/* ── Mobile prompt sheet ─────────────────────────────────────── */}
       {narrow ? (
         <PromptSheet
           open={promptsOpen}
@@ -157,7 +151,7 @@ export const MainScreen: React.FC = () => {
         />
       ) : null}
 
-      {/* ── Settings (both mobile and desktop) ──────────────────────────── */}
+      {/* ── Settings ────────────────────────────────────────────────── */}
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </View>
   );
@@ -166,23 +160,25 @@ export const MainScreen: React.FC = () => {
 // ─── Desktop three-pane ──────────────────────────────────────────────────────
 
 const DesktopLayout: React.FC<{ onOpenSettings: () => void }> = ({ onOpenSettings }) => {
+  const accent = useTheme();
   const conversations = useAppStore((s) => s.conversations);
   const order = useAppStore((s) => s.conversationOrder);
   const activeId = useAppStore((s) => s.activeConversationId);
   const setActive = useAppStore((s) => s.setActiveConversation);
   const createConv = useAppStore((s) => s.createConversation);
   const deleteConv = useAppStore((s) => s.deleteConversation);
-  const clearMessages = useAppStore((s) => s.clearMessages);
 
   return (
     <View style={styles.desktopBody}>
       {/* Left rail */}
-      <View style={[styles.rail, bevel.inset, { backgroundColor: palette.surface }]}>
+      <View style={styles.rail}>
         <View style={styles.railHeader}>
-          <Text style={styles.railTitle}>💬 Sessions</Text>
-          <Button label="+" small onPress={() => createConv()} />
+          <Text style={styles.railTitle}>Sessions</Text>
+          <Pressable hitSlop={8} onPress={() => createConv()}>
+            <Text style={[styles.railAction, { color: accent.accent.fg }]}>+ New</Text>
+          </Pressable>
         </View>
-        <ScrollView style={styles.railList} contentContainerStyle={{ padding: 2 }}>
+        <ScrollView style={styles.railList} contentContainerStyle={{ padding: space.xs }}>
           {order.map((id) => {
             const c = conversations[id];
             if (!c) return null;
@@ -194,7 +190,7 @@ const DesktopLayout: React.FC<{ onOpenSettings: () => void }> = ({ onOpenSetting
                 onLongPress={() => deleteConv(id)}
                 style={({ pressed }) => [
                   styles.railItem,
-                  isActive ? styles.railItemActive : null,
+                  isActive ? [styles.railItemActive, { backgroundColor: accent.accent.soft }] : null,
                   pressed ? styles.railItemPressed : null,
                 ]}
               >
@@ -208,15 +204,13 @@ const DesktopLayout: React.FC<{ onOpenSettings: () => void }> = ({ onOpenSetting
             );
           })}
         </ScrollView>
-        <Text style={styles.railHint}>long-press to delete</Text>
+        <Text style={styles.railHint}>Long-press to delete</Text>
       </View>
 
-      {/* Center */}
       <View style={styles.desktopCenter}>
         <ChatView />
       </View>
 
-      {/* Right prompt nav */}
       <View style={styles.desktopRight}>
         <PromptNavigator
           onInsertPrompt={(body) => {
@@ -225,11 +219,8 @@ const DesktopLayout: React.FC<{ onOpenSettings: () => void }> = ({ onOpenSetting
             }
           }}
         />
-        <Pressable
-          onPress={onOpenSettings}
-          style={[styles.desktopSettingsBtn]}
-        >
-          <Text style={styles.desktopSettingsText}>⚙ Settings</Text>
+        <Pressable onPress={onOpenSettings} style={styles.desktopSettingsBtn}>
+          <Text style={[styles.desktopSettingsText, { color: accent.accent.fg }]}>Settings</Text>
         </Pressable>
       </View>
     </View>
@@ -237,9 +228,9 @@ const DesktopLayout: React.FC<{ onOpenSettings: () => void }> = ({ onOpenSetting
 };
 
 function statusDotColor(provider: 'mock' | 'hermes-gateway', ok: boolean | null) {
-  if (provider === 'mock') return { backgroundColor: palette.cyberBlue };
-  if (ok === null) return { backgroundColor: palette.inkMuted };
-  return ok ? { backgroundColor: palette.ok } : { backgroundColor: palette.err };
+  if (provider === 'mock') return { backgroundColor: neutral.inkMuted };
+  if (ok === null) return { backgroundColor: neutral.inkMuted };
+  return ok ? { backgroundColor: neutral.ok } : { backgroundColor: neutral.err };
 }
 
 // ─── Mobile drawer (sessions) ────────────────────────────────────────────────
@@ -257,40 +248,35 @@ interface DrawerProps {
 }
 
 const SessionDrawer: React.FC<DrawerProps> = ({ open, onClose, conversations, order, activeId, onPick, onNew, onDelete, insets }) => {
-  const slideAnim = useRef(new Animated.Value(-1)).current; // -1 = closed, 0 = open
+  const accent = useTheme();
+  const slideAnim = useRef(new Animated.Value(-1)).current;
 
   useEffect(() => {
-    Animated.timing(slideAnim, {
-      toValue: open ? 0 : -1,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
+    Animated.timing(slideAnim, { toValue: open ? 0 : -1, duration: 200, useNativeDriver: true }).start();
   }, [open, slideAnim]);
 
-  const translateX = slideAnim.interpolate({ inputRange: [-1, 0], outputRange: [-320, 0] });
+  const translateX = slideAnim.interpolate({ inputRange: [-1, 0], outputRange: [-340, 0] });
   const backdropOpacity = slideAnim.interpolate({ inputRange: [-1, 0], outputRange: [0, 0.4] });
 
   return (
     <Modal visible={open} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      {/* Backdrop */}
       <Animated.View style={[styles.drawerBackdrop, { opacity: backdropOpacity }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       </Animated.View>
 
-      {/* Panel */}
       <Animated.View
         style={[
           styles.drawerPanel,
           { transform: [{ translateX }], paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 },
         ]}
       >
-        <View style={[styles.drawerHeader, bevel.raisedThin]}>
+        <View style={styles.drawerHeader}>
           <Text style={styles.drawerTitle}>Sessions</Text>
-          <Pressable hitSlop={12} onPress={onNew} style={styles.iconBtn}>
-            <Text style={styles.iconBtnText}>＋</Text>
+          <Pressable hitSlop={8} onPress={onNew}>
+            <Text style={[styles.drawerAction, { color: accent.accent.fg }]}>+ New</Text>
           </Pressable>
         </View>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 6 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: space.sm }}>
           {order.map((id) => {
             const c = conversations[id];
             if (!c) return null;
@@ -302,7 +288,7 @@ const SessionDrawer: React.FC<DrawerProps> = ({ open, onClose, conversations, or
                 onLongPress={() => onDelete(id)}
                 style={({ pressed }) => [
                   styles.drawerItem,
-                  isActive ? styles.drawerItemActive : null,
+                  isActive ? [styles.drawerItemActive, { backgroundColor: accent.accent.soft }] : null,
                   pressed ? styles.drawerItemPressed : null,
                 ]}
               >
@@ -316,7 +302,7 @@ const SessionDrawer: React.FC<DrawerProps> = ({ open, onClose, conversations, or
             );
           })}
         </ScrollView>
-        <Text style={styles.drawerHint}>tap switch · long-press delete</Text>
+        <Text style={styles.drawerHint}>Tap switch · long-press delete</Text>
       </Animated.View>
     </Modal>
   );
@@ -326,17 +312,13 @@ const SessionDrawer: React.FC<DrawerProps> = ({ open, onClose, conversations, or
 
 const PromptSheet: React.FC<{ open: boolean; onClose: () => void; onInsertPrompt: (body: string) => void }> = ({ open, onClose, onInsertPrompt }) => {
   const insets = useSafeAreaInsets();
-  const slideAnim = useRef(new Animated.Value(1)).current; // 1 = hidden below, 0 = open
+  const slideAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    Animated.timing(slideAnim, {
-      toValue: open ? 0 : 1,
-      duration: 220,
-      useNativeDriver: true,
-    }).start();
+    Animated.timing(slideAnim, { toValue: open ? 0 : 1, duration: 220, useNativeDriver: true }).start();
   }, [open, slideAnim]);
 
-  const translateY = slideAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 600] });
+  const translateY = slideAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 800] });
   const backdropOpacity = slideAnim.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0] });
 
   return (
@@ -353,16 +335,13 @@ const PromptSheet: React.FC<{ open: boolean; onClose: () => void; onInsertPrompt
         <View style={styles.sheetHandleWrap}>
           <View style={styles.sheetHandle} />
         </View>
-        <PromptNavigator
-          onInsertPrompt={(body) => { onInsertPrompt(body); onClose(); }}
-          embedded
-        />
+        <PromptNavigator onInsertPrompt={(body) => { onInsertPrompt(body); onClose(); }} embedded />
       </Animated.View>
     </Modal>
   );
 };
 
-// ─── Time helper ─────────────────────────────────────────────────────────────
+// ─── helpers ─────────────────────────────────────────────────────────────────
 
 function timeAgo(ts: number): string {
   const diff = Date.now() - ts;
@@ -372,90 +351,82 @@ function timeAgo(ts: number): string {
   return `${Math.floor(diff / 86_400_000)}d`;
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+// ─── styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: palette.canvas },
+  root: { flex: 1, backgroundColor: neutral.bg },
 
-  // App bar (mobile + desktop fallback)
   appBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: palette.surface,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    gap: 8,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    gap: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  appBarTitle: { ...type.title, color: palette.ink },
-  appBarSubtitle: { ...type.ui, color: palette.inkMuted, fontSize: 10 },
+  appBarTitle: { ...type.title, color: neutral.ink, fontSize: 16 },
+  appBarSubtitle: { ...type.caption, color: neutral.inkMuted, marginTop: 2 },
   appBarRight: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto' },
   iconBtn: {
     width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: palette.surface, borderRadius: 0,
-    borderTopWidth: 1, borderLeftWidth: 1, borderTopColor: palette.bevelHi, borderLeftColor: palette.bevelHi,
-    borderRightWidth: 1, borderBottomWidth: 1, borderRightColor: palette.bevelLo, borderBottomColor: palette.bevelLo,
+    backgroundColor: neutral.surface,
+    borderRadius: radius.md,
+    borderWidth: 1, borderColor: neutral.border,
   },
-  iconBtnText: { fontSize: 20, color: palette.ink, lineHeight: 22 },
+  iconBtnText: { fontSize: 18, color: neutral.ink, lineHeight: 22 },
   iconBtnWithDot: { position: 'relative', width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
-  statusDot: { position: 'absolute', right: -2, top: -2, width: 8, height: 8, borderRadius: 4, borderWidth: 1, borderColor: palette.surface },
+  statusDot: { position: 'absolute', right: -2, top: -2, width: 8, height: 8, borderRadius: 4, borderWidth: 1, borderColor: neutral.bg },
   titlePress: { flex: 1, minWidth: 0 },
   titleInput: {
-    flex: 1, ...type.body, color: palette.ink, backgroundColor: palette.paper,
-    paddingHorizontal: 4, paddingVertical: 2, minHeight: 28,
-    borderTopWidth: 1, borderLeftWidth: 1, borderTopColor: palette.bevelLo, borderLeftColor: palette.bevelLo,
-    borderRightWidth: 1, borderBottomWidth: 1, borderRightColor: palette.bevelHi, borderBottomColor: palette.bevelHi,
+    flex: 1, ...type.body, color: neutral.ink, backgroundColor: neutral.surface,
+    paddingHorizontal: space.xs, paddingVertical: 4, minHeight: 32, borderRadius: radius.sm,
+    borderWidth: 1, borderColor: neutral.border,
   },
 
-  // Mobile body
   mobileBody: { flex: 1 },
 
-  // Desktop
   desktopBody: { flex: 1, flexDirection: 'row' },
   desktopCenter: { flex: 1 },
-  desktopRight: { width: 280, marginLeft: 4, marginRight: 4, marginVertical: 4 },
-  desktopSettingsBtn: {
-    marginTop: 4, padding: 6, backgroundColor: palette.surface, alignItems: 'center',
-    borderTopWidth: 1, borderLeftWidth: 1, borderTopColor: palette.bevelHi, borderLeftColor: palette.bevelHi,
-    borderRightWidth: 1, borderBottomWidth: 1, borderRightColor: palette.bevelLo, borderBottomColor: palette.bevelLo,
-  },
-  desktopSettingsText: { ...type.uiBold, color: palette.ink },
+  desktopRight: { width: 300, marginRight: space.sm, marginVertical: space.sm, backgroundColor: neutral.surface, borderRadius: radius.md, borderWidth: 1, borderColor: neutral.border, padding: space.sm },
+  desktopSettingsBtn: { marginTop: space.sm, paddingVertical: space.xs, alignItems: 'center' },
+  desktopSettingsText: { ...type.uiBold, fontSize: 13 },
 
-  rail: { width: 220, marginLeft: 4, marginVertical: 4 },
-  railHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 4 },
-  railTitle: { ...type.uiBold, color: palette.ink },
+  rail: { width: 240, marginLeft: space.sm, marginVertical: space.sm, backgroundColor: neutral.surface, borderRadius: radius.md, borderWidth: 1, borderColor: neutral.border },
+  railHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: space.sm, borderBottomWidth: 1, borderBottomColor: neutral.border },
+  railTitle: { ...type.uiBold, color: neutral.ink, fontSize: 13 },
+  railAction: { ...type.caption, fontWeight: '600' },
   railList: { flex: 1 },
-  railItem: { paddingHorizontal: 6, paddingVertical: 4, marginVertical: 1, backgroundColor: palette.surface },
-  railItemActive: { backgroundColor: palette.inkBlue },
-  railItemPressed: { backgroundColor: palette.titlebarActive },
-  railItemText: { ...type.ui, color: palette.ink },
-  railItemTextActive: { color: palette.titlebarActiveText },
-  railItemMeta: { ...type.ui, color: palette.inkMuted, fontSize: 9 },
-  railHint: { ...type.ui, color: palette.inkMuted, textAlign: 'center', padding: 4, fontStyle: 'italic' },
+  railItem: { paddingHorizontal: space.sm, paddingVertical: space.xs + 2, marginVertical: 2, borderRadius: radius.sm },
+  railItemActive: {},
+  railItemPressed: { backgroundColor: neutral.surfaceMuted },
+  railItemText: { ...type.body, color: neutral.ink, fontSize: 13 },
+  railItemTextActive: { fontWeight: '600' },
+  railItemMeta: { ...type.caption, color: neutral.inkMuted, marginTop: 2 },
+  railHint: { ...type.caption, color: neutral.inkMuted, textAlign: 'center', padding: space.xs, fontStyle: 'italic', borderTopWidth: 1, borderTopColor: neutral.border },
 
-  // Mobile drawer
   drawerBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: '#000' },
   drawerPanel: {
     position: 'absolute', top: 0, bottom: 0, left: 0, width: 320, maxWidth: '85%',
-    backgroundColor: palette.canvas, borderRightWidth: 2, borderRightColor: palette.bevelDark,
+    backgroundColor: neutral.surface, borderRightWidth: 1, borderRightColor: neutral.border,
   },
   drawerHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    padding: 8, marginBottom: 6, backgroundColor: palette.surface,
+    paddingHorizontal: space.md, paddingBottom: space.sm, marginBottom: space.xs,
   },
-  drawerTitle: { ...type.title, color: palette.ink },
-  drawerItem: { paddingHorizontal: 10, paddingVertical: 10, marginVertical: 2, backgroundColor: palette.surface, borderRadius: 0 },
-  drawerItemActive: { backgroundColor: palette.inkBlue },
-  drawerItemPressed: { backgroundColor: palette.titlebarActive },
-  drawerItemText: { ...type.body, color: palette.ink },
-  drawerItemTextActive: { color: palette.titlebarActiveText },
-  drawerItemMeta: { ...type.ui, color: palette.inkMuted, fontSize: 10, marginTop: 2 },
-  drawerHint: { ...type.ui, color: palette.inkMuted, textAlign: 'center', padding: 8, fontStyle: 'italic' },
+  drawerTitle: { ...type.title, color: neutral.ink, fontSize: 16 },
+  drawerAction: { ...type.caption, fontWeight: '600' },
+  drawerItem: { paddingHorizontal: space.md, paddingVertical: space.sm, marginVertical: 2, borderRadius: radius.sm },
+  drawerItemActive: {},
+  drawerItemPressed: { backgroundColor: neutral.surfaceMuted },
+  drawerItemText: { ...type.body, color: neutral.ink, fontSize: 14 },
+  drawerItemTextActive: { fontWeight: '600' },
+  drawerItemMeta: { ...type.caption, color: neutral.inkMuted, marginTop: 2 },
+  drawerHint: { ...type.caption, color: neutral.inkMuted, textAlign: 'center', padding: space.sm, fontStyle: 'italic' },
 
-  // Mobile sheet (prompts)
   sheetPanel: {
     position: 'absolute', left: 0, right: 0, bottom: 0, height: 540, maxHeight: '80%',
-    backgroundColor: palette.canvas, borderTopWidth: 2, borderTopColor: palette.bevelDark,
+    backgroundColor: neutral.surface, borderTopWidth: 1, borderTopColor: neutral.border, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg,
   },
-  sheetHandleWrap: { alignItems: 'center', paddingBottom: 6 },
-  sheetHandle: { width: 40, height: 4, backgroundColor: palette.bevelDark, borderRadius: 2 },
+  sheetHandleWrap: { alignItems: 'center', paddingBottom: space.xs },
+  sheetHandle: { width: 40, height: 4, backgroundColor: neutral.border, borderRadius: 2 },
 });

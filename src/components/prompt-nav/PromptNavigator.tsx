@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
-import { palette, type, space, bevel } from '../../theme';
+import { neutral, type, space, radius, useTheme } from '../../theme';
 import { useAppStore } from '../../store/app';
 import { TextField, Button, Panel } from '../win95';
 
 export interface PromptNavigatorProps {
   onInsertPrompt?: (body: string) => void;
-  /** When true, the navigator renders edge-to-edge with no fixed width / outer bevel. */
+  /** When true, the navigator renders edge-to-edge with no fixed width. */
   embedded?: boolean;
 }
 
 export const PromptNavigator: React.FC<PromptNavigatorProps> = ({ onInsertPrompt, embedded = false }) => {
+  const accent = useTheme();
   const prompts = useAppStore((s) => s.prompts);
   const order = useAppStore((s) => s.promptOrder);
   const usePrompt = useAppStore((s) => s.usePrompt);
@@ -24,7 +25,6 @@ export const PromptNavigator: React.FC<PromptNavigatorProps> = ({ onInsertPrompt
   const [draftCategory, setDraftCategory] = useState('');
 
   const sorted = [...order].map((id) => prompts[id]).filter(Boolean).sort((a, b) => {
-    // pinned first, then by lastUsedAt (recent), then by createdAt
     if ((a.pinned ? 1 : 0) !== (b.pinned ? 1 : 0)) return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
     const la = a.lastUsedAt ?? a.createdAt;
     const lb = b.lastUsedAt ?? b.createdAt;
@@ -41,18 +41,22 @@ export const PromptNavigator: React.FC<PromptNavigatorProps> = ({ onInsertPrompt
   };
 
   return (
-    <View style={embedded ? styles.rootEmbedded : [styles.root, bevel.raised, { backgroundColor: palette.surface }]}>
+    <View style={embedded ? styles.rootEmbedded : styles.root}>
       <View style={styles.header}>
-        <Text style={styles.title}>📝 Prompts</Text>
+        <Text style={styles.title}>Prompts</Text>
         {!adding ? (
-          <Button label="+ New" small onPress={() => setAdding(true)} />
+          <Pressable onPress={() => setAdding(true)} hitSlop={6}>
+            <Text style={[styles.headerLink, { color: accent.accent.fg }]}>+ New</Text>
+          </Pressable>
         ) : (
-          <Button label="× Cancel" small onPress={() => setAdding(false)} />
+          <Pressable onPress={() => setAdding(false)} hitSlop={6}>
+            <Text style={styles.headerLinkMuted}>Cancel</Text>
+          </Pressable>
         )}
       </View>
 
       {adding ? (
-        <View style={[styles.addBox, bevel.sunken]}>
+        <View style={styles.addBox}>
           <TextField
             label="Title"
             value={draftTitle}
@@ -94,17 +98,19 @@ export const PromptNavigator: React.FC<PromptNavigatorProps> = ({ onInsertPrompt
           >
             <View style={styles.itemHeader}>
               <Text numberOfLines={1} style={styles.itemTitle}>
-                {p.pinned ? '📌 ' : ''}{p.title}
+                {p.pinned ? '★ ' : ''}{p.title}
               </Text>
               <Pressable hitSlop={8} onPress={() => togglePin(p.id)}>
-                <Text style={styles.pinBtn}>{p.pinned ? '★' : '☆'}</Text>
+                <Text style={[styles.pinBtn, p.pinned ? { color: accent.accent.fg } : null]}>
+                  {p.pinned ? '★' : '☆'}
+                </Text>
               </Pressable>
             </View>
             <Text numberOfLines={2} style={styles.itemBody}>
               {p.body}
             </Text>
             <View style={styles.itemMeta}>
-              {p.category ? <Text style={styles.itemTag}>{p.category}</Text> : null}
+              {p.category ? <Text style={[styles.itemTag, { color: accent.accent.fg }]}>{p.category}</Text> : null}
               <Text style={styles.itemStat}>
                 {p.usageCount > 0 ? `used ${p.usageCount}×` : 'unused'}
               </Text>
@@ -121,39 +127,31 @@ export const PromptNavigator: React.FC<PromptNavigatorProps> = ({ onInsertPrompt
 };
 
 const styles = StyleSheet.create({
-  root: { width: 260, padding: 4 },
-  rootEmbedded: { flex: 1, padding: 4 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 4 },
-  title: { ...type.uiBold, color: palette.ink },
-  addBox: { backgroundColor: palette.surface, margin: 4, padding: 6 },
-  field: { marginVertical: 2 },
+  root: { width: 280, padding: space.sm },
+  rootEmbedded: { flex: 1, padding: space.sm },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: space.xs, marginBottom: space.xs },
+  title: { ...type.title, color: neutral.ink, fontSize: 14 },
+  headerLink: { ...type.caption, fontWeight: '600' },
+  headerLinkMuted: { ...type.caption, color: neutral.inkMuted },
+  addBox: { backgroundColor: neutral.surface, padding: space.sm, borderRadius: radius.md, borderWidth: 1, borderColor: neutral.border, marginBottom: space.sm },
+  field: { marginVertical: space.xxs },
   list: { flex: 1 },
-  listContent: { padding: 4, paddingBottom: 12 },
+  listContent: { paddingBottom: space.md },
   item: {
-    backgroundColor: palette.paper,
-    padding: 6,
-    marginBottom: 4,
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderColor: palette.bevelHi,
-    borderRightColor: palette.bevelDark,
-    borderBottomColor: palette.bevelDark,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
+    backgroundColor: neutral.surface,
+    padding: space.sm,
+    marginBottom: space.xs,
+    borderRadius: radius.md,
+    borderWidth: 1, borderColor: neutral.border,
   },
-  itemPressed: {
-    borderTopColor: palette.bevelDark,
-    borderLeftColor: palette.bevelDark,
-    borderRightColor: palette.bevelHi,
-    borderBottomColor: palette.bevelHi,
-  },
+  itemPressed: { backgroundColor: neutral.surfaceMuted },
   itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  itemTitle: { ...type.uiBold, color: palette.ink, flex: 1 },
-  pinBtn: { ...type.ui, color: palette.ink, marginLeft: 4 },
-  itemBody: { ...type.ui, color: palette.inkSoft, marginTop: 2 },
-  itemMeta: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
-  itemTag: { ...type.ui, color: palette.inkBlue, fontStyle: 'italic' },
-  itemStat: { ...type.ui, color: palette.inkMuted },
-  empty: { ...type.ui, color: palette.inkMuted, textAlign: 'center', padding: 12, fontStyle: 'italic' },
-  hint: { ...type.ui, color: palette.inkMuted, textAlign: 'center', marginTop: 8, fontStyle: 'italic' },
+  itemTitle: { ...type.uiBold, color: neutral.ink, flex: 1 },
+  pinBtn: { ...type.caption, color: neutral.inkMuted, marginLeft: 4 },
+  itemBody: { ...type.caption, color: neutral.inkSoft, marginTop: 2 },
+  itemMeta: { flexDirection: 'row', justifyContent: 'space-between', marginTop: space.xs },
+  itemTag: { ...type.caption, fontStyle: 'italic' },
+  itemStat: { ...type.caption, color: neutral.inkMuted },
+  empty: { ...type.caption, color: neutral.inkMuted, textAlign: 'center', padding: space.md, fontStyle: 'italic' },
+  hint: { ...type.caption, color: neutral.inkMuted, textAlign: 'center', marginTop: space.sm, fontStyle: 'italic' },
 });

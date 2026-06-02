@@ -1,7 +1,7 @@
 import React, { ReactNode } from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
 import { TitleBar, TitleBarProps } from './TitleBar';
-import { palette, bevel, space } from '../../theme';
+import { neutral, space, radius } from '../../theme';
 
 export interface WindowProps {
   title: string;
@@ -18,8 +18,8 @@ export interface WindowProps {
 }
 
 /**
- * Window — outer chrome: title bar + raised gray frame.
- * Inner content area should be a sunken <Panel variant="inset"> or white <Panel background={paper}>.
+ * Window — outer chrome. In the flat design this is just an optional rounded
+ * surface (no border, no bevel). Useful for the desktop right-pane grouping.
  */
 export const Window: React.FC<WindowProps> = ({
   title,
@@ -38,12 +38,8 @@ export const Window: React.FC<WindowProps> = ({
     <View
       style={[
         styles.outer,
-        bevel.raised,
-        {
-          backgroundColor: palette.surface,
-          alignSelf: fullWidth ? 'stretch' : undefined,
-          flexGrow: fullHeight ? 1 : undefined,
-        },
+        { backgroundColor: neutral.bg, borderRadius: radius.lg },
+        { alignSelf: fullWidth ? 'stretch' : undefined, flexGrow: fullHeight ? 1 : undefined },
         style,
       ]}
     >
@@ -61,11 +57,6 @@ export const Window: React.FC<WindowProps> = ({
 };
 
 const styles = StyleSheet.create({
-  outer: {
-    flexDirection: 'column',
-  },
-  content: {
-    flex: 1,
-    padding: space.xs,
-  },
+  outer: { flexDirection: 'column' },
+  content: { flex: 1, padding: space.sm },
 });

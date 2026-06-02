@@ -1,22 +1,29 @@
 import React, { forwardRef } from 'react';
 import { TextInput, View, Text, StyleSheet, TextInputProps, ViewStyle } from 'react-native';
-import { palette, type, bevel, space } from '../../theme';
+import { neutral, type, space, radius } from '../../theme';
 
 export interface TextFieldProps extends TextInputProps {
   label?: string;
   multiline?: boolean;
   containerStyle?: ViewStyle;
+  bare?: boolean; // skip the 1px line; for use on already-tinted backgrounds
 }
 
-export const TextField = forwardRef<TextInput, TextFieldProps>(({ label, multiline, containerStyle, style, ...rest }, ref) => {
+/**
+ * Flat text field. A single 1px line beneath the input (or a soft filled box
+ * on a `bare` surface). No inset bevel, no raised chrome.
+ */
+export const TextField = forwardRef<TextInput, TextFieldProps>(({
+  label, multiline, containerStyle, style, bare = false, ...rest
+}, ref) => {
   return (
     <View style={[styles.outer, containerStyle]}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
-      <View style={[styles.box, bevel.inset]}>
+      <View style={[styles.box, bare ? styles.boxBare : styles.boxLine]}>
         <TextInput
           ref={ref}
           multiline={multiline}
-          placeholderTextColor={palette.inkMuted}
+          placeholderTextColor={neutral.inkMuted}
           {...rest}
           style={[
             styles.input,
@@ -33,12 +40,18 @@ TextField.displayName = 'TextField';
 
 const styles = StyleSheet.create({
   outer: { marginVertical: space.xs },
-  label: { ...type.ui, color: palette.ink, marginBottom: 2 },
-  box: { backgroundColor: palette.paper, paddingHorizontal: 2, paddingVertical: 0 },
+  label: { ...type.caption, color: neutral.inkMuted, marginBottom: 4 },
+  box: { backgroundColor: 'transparent' },
+  boxLine: {
+    borderBottomWidth: 1,
+    borderBottomColor: neutral.border,
+    paddingBottom: 4,
+  },
+  boxBare: {},
   input: {
     ...type.body,
-    color: palette.ink,
-    backgroundColor: palette.paper,
+    color: neutral.ink,
+    backgroundColor: 'transparent',
     padding: 0,
     minHeight: 22,
   },

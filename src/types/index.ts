@@ -41,9 +41,11 @@ export interface PromptTemplate {
 }
 
 export type LLMProvider = 'mock' | 'hermes-gateway';
+export type Accent = 'mono' | 'blue' | 'pink' | 'green';
 
 export interface AppSettings {
-  theme: 'win95' | 'win98' | 'system7' | 'sakura';
+  /** Visual accent: mono | blue | pink | green */
+  accent: Accent;
   showSidebar: boolean;
   showIllustrations: boolean;
   fontSize: number;
@@ -64,7 +66,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  theme: 'win95',
+  accent: 'blue',
   showSidebar: true,
   showIllustrations: true,
   fontSize: 13,

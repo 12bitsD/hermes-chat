@@ -1,8 +1,8 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
-import { palette, type, space, bevel } from '../../theme';
+import { neutral, type, space, radius } from '../../theme';
 
 export interface FileCardProps {
   name: string;
@@ -35,7 +35,7 @@ export const FileCard: React.FC<FileCardProps> = ({
   name, kind, size, uri, previewUri, expanded = false, onToggle, onRemove, previewContent, pageCount,
 }) => {
   return (
-    <View style={[styles.card, bevel.raised]}>
+    <View style={styles.card}>
       <Pressable style={styles.header} onPress={onToggle}>
         <Text style={styles.icon}>{KIND_ICON[kind]}</Text>
         <View style={styles.headerText}>
@@ -50,11 +50,11 @@ export const FileCard: React.FC<FileCardProps> = ({
             <Text style={styles.removeBtnText}>×</Text>
           </Pressable>
         ) : null}
-        <Text style={styles.chevron}>{expanded ? '▼' : '▶'}</Text>
+        <Text style={styles.chevron}>{expanded ? '▾' : '▸'}</Text>
       </Pressable>
 
       {expanded ? (
-        <View style={[styles.body, bevel.inset]}>
+        <View style={styles.body}>
           {previewUri && kind === 'image' ? (
             <View style={styles.previewWrap}>
               {Platform.OS === 'web' ? (
@@ -97,16 +97,8 @@ export interface PickedFile {
   mimeType?: string;
 }
 
-/**
- * Pick a file. On Android/iOS uses the native document picker (returns a URI
- * pointing at the OS file). On web uses an HTML <input type=file>.
- *
- * Both paths normalize into a PickedFile.
- */
 export async function pickFile(): Promise<PickedFile | null> {
-  if (Platform.OS === 'web') {
-    return pickFileWeb();
-  }
+  if (Platform.OS === 'web') return pickFileWeb();
   return pickFileNative();
 }
 
@@ -123,16 +115,10 @@ async function pickFileNative(): Promise<PickedFile | null> {
     if (kind === 'text') {
       try {
         previewContent = await FileSystem.readAsStringAsync(a.uri, { encoding: 'utf8' });
-      } catch {
-        // ignore — preview is optional
-      }
+      } catch { /* ignore */ }
     }
     return {
-      name: a.name,
-      size: a.size ?? 0,
-      uri: a.uri,
-      kind,
-      previewContent,
+      name: a.name, size: a.size ?? 0, uri: a.uri, kind, previewContent,
       mimeType: a.mimeType ?? undefined,
     };
   } catch (e) {
@@ -152,10 +138,7 @@ async function pickFileWeb(): Promise<PickedFile | null> {
       const reader = new FileReader();
       reader.onload = () => {
         resolve({
-          name: f.name,
-          size: f.size,
-          uri: reader.result as string,
-          kind,
+          name: f.name, size: f.size, uri: reader.result as string, kind,
           previewContent: kind === 'text' ? (reader.result as string) : undefined,
           mimeType: f.type || undefined,
         });
@@ -175,7 +158,7 @@ function guessKindFromName(name: string, mime: string): FileCardProps['kind'] {
   return 'other';
 }
 
-// ─── Drop / Tap zone wrapper ──────────────────────────────────────────────────
+// ─── Attach zone (lightweight) ────────────────────────────────────────────────
 
 export interface AttachZoneProps {
   onFilePicked: (file: PickedFile) => void;
@@ -183,11 +166,6 @@ export interface AttachZoneProps {
   buttonLabel?: string;
 }
 
-/**
- * AttachZone — wraps the composer with a tap (and web drag-drop) target so
- * users can attach files inline. On Android/iOS this surfaces the system
- * document picker; on web it accepts drag-drop AND the same tap → file input.
- */
 export const AttachZone: React.FC<AttachZoneProps> = ({ onFilePicked, children, buttonLabel }) => {
   const [hovering, setHovering] = useState(false);
   const webDropProps: any = Platform.OS === 'web'
@@ -222,50 +200,41 @@ export const AttachZone: React.FC<AttachZoneProps> = ({ onFilePicked, children, 
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: palette.surface,
+    backgroundColor: neutral.surface,
+    borderWidth: 1, borderColor: neutral.border,
+    borderRadius: radius.md,
     marginVertical: 4,
   },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 6 },
-  icon: { fontSize: 20, marginRight: 8 },
+  header: { flexDirection: 'row', alignItems: 'center', padding: space.sm },
+  icon: { fontSize: 18, marginRight: space.sm },
   headerText: { flex: 1 },
-  name: { ...type.uiBold, color: palette.ink },
-  meta: { ...type.ui, color: palette.inkMuted, fontSize: 10 },
+  name: { ...type.uiBold, color: neutral.ink },
+  meta: { ...type.caption, color: neutral.inkMuted, marginTop: 2 },
   removeBtn: { paddingHorizontal: 6, paddingVertical: 2 },
-  removeBtnText: { ...type.uiBold, color: palette.err, fontSize: 16 },
-  chevron: { ...type.ui, color: palette.ink, marginLeft: 4 },
-  body: { backgroundColor: palette.paper, padding: 6, margin: 4 },
+  removeBtnText: { ...type.uiBold, color: neutral.err, fontSize: 16 },
+  chevron: { ...type.caption, color: neutral.inkMuted, marginLeft: space.xs },
+  body: { backgroundColor: neutral.bg, padding: space.sm, borderTopWidth: 1, borderTopColor: neutral.border },
   previewWrap: { alignItems: 'center' },
   previewImg: { maxWidth: '100%', maxHeight: 200, objectFit: 'contain' } as any,
   textPreview: { maxHeight: 160 },
-  textPreviewContent: { ...type.code, color: palette.ink },
-  textPreviewMore: { ...type.ui, color: palette.inkMuted, fontStyle: 'italic', marginTop: 4 },
-  placeholder: { alignItems: 'center', padding: 16, opacity: 0.6 },
-  placeholderIcon: { fontSize: 32, marginBottom: 4 },
-  placeholderText: { ...type.ui, color: palette.inkMuted, fontStyle: 'italic' },
+  textPreviewContent: { ...type.code, color: neutral.ink },
+  textPreviewMore: { ...type.caption, color: neutral.inkMuted, fontStyle: 'italic', marginTop: 4 },
+  placeholder: { alignItems: 'center', padding: space.lg, opacity: 0.7 },
+  placeholderIcon: { fontSize: 28, marginBottom: 4 },
+  placeholderText: { ...type.caption, color: neutral.inkMuted, fontStyle: 'italic', textAlign: 'center' },
 
   drop: { position: 'relative' },
-  dropHover: { backgroundColor: palette.cyberBlue, opacity: 0.9 },
+  dropHover: { backgroundColor: neutral.surfaceMuted },
   attachBtn: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-    backgroundColor: palette.surface,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderTopColor: palette.bevelHi,
-    borderLeftColor: palette.bevelHi,
-    borderRightColor: palette.bevelLo,
-    borderBottomColor: palette.bevelLo,
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
+    top: 4,
+    right: 4,
+    backgroundColor: neutral.surface,
+    paddingHorizontal: space.sm,
+    paddingVertical: 4,
+    borderRadius: radius.md,
+    borderWidth: 1, borderColor: neutral.border,
   },
-  attachBtnPressed: {
-    borderTopColor: palette.bevelLo,
-    borderLeftColor: palette.bevelLo,
-    borderRightColor: palette.bevelHi,
-    borderBottomColor: palette.bevelHi,
-  },
-  attachBtnText: { ...type.ui, color: palette.ink },
+  attachBtnPressed: { backgroundColor: neutral.surfaceMuted },
+  attachBtnText: { ...type.caption, color: neutral.inkSoft },
 });

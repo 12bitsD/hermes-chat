@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Keyboard, Platform, KeyboardAvoidingView, Image, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Keyboard, Platform, KeyboardAvoidingView, Image, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { palette, type, space, bevel } from '../../theme';
+import { neutral, type, space, radius, useTheme } from '../../theme';
 import { TextField, Button } from '../win95';
 import { MessageBubble } from './MessageBubble';
 import { EmptyState } from './EmptyState';
@@ -24,11 +24,12 @@ const STICK_TO_BOTTOM_MS = 120;
 
 export const ChatView: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const accent = useTheme();
   const conversationId = useAppStore((s) => s.activeConversationId);
   const messages = useAppStore((s) => s.getActiveMessages());
   const appendMessage = useAppStore((s) => s.appendMessage);
   const updateMessage = useAppStore((s) => s.updateMessage);
-  const showIllustrations = useAppStore((s) => s.settings.showIllustrations);
+  const showIllustrations = useAppStore((s) => s.settings.showIllustrations); // reserved for mascot toggle
   const systemPrompt = useAppStore((s) => s.settings.systemPrompt);
 
   const [input, setInput] = useState('');
@@ -130,6 +131,8 @@ export const ChatView: React.FC = () => {
   const send = useCallback(async () => {
     const text = input.trim();
     if (!text || streaming || !conversationId) return;
+    // Defensive: cancel any previous in-flight stream before starting a new one
+    abortRef.current?.abort();
     Keyboard.dismiss();
     setInput('');
     setStreamError(null);
@@ -195,6 +198,7 @@ export const ChatView: React.FC = () => {
         },
         {
           onChunk: (chunk) => {
+            if (ctrl.signal.aborted) return; // ignore late chunks after stop
             acc += chunk;
             pendingAcc = acc;
             // Update local state for the in-flight buffer used by error path
@@ -202,11 +206,17 @@ export const ChatView: React.FC = () => {
           },
           onDone: () => {
             if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-            updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
-            haptic('success');
+            if (!ctrl.signal.aborted) {
+              updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
+              haptic('success');
+            } else {
+              // user stopped — keep partial content, mark as done (not error)
+              updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
+            }
           },
           onError: (err) => {
             if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+            if (ctrl.signal.aborted) return; // user-initiated stop, not a real error
             const msg = err?.message ?? String(err);
             setStreamError(msg);
             updateMessage(conversationId, assistantMsg.id, {
@@ -219,6 +229,7 @@ export const ChatView: React.FC = () => {
       );
     } catch (e: any) {
       if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+      if (ctrl.signal.aborted) return; // stop path — no error UI
       const msg = e?.message ?? String(e);
       setStreamError(msg);
       updateMessage(conversationId, assistantMsg.id, {
@@ -289,12 +300,6 @@ export const ChatView: React.FC = () => {
                 <MessageBubble key={m.id} message={m} isLast={i === arr.length - 1} />
               ))
           )}
-          {messages.filter((m) => m.role !== 'system').length === 0 && showIllustrations ? (
-            <View style={styles.illustration}>
-              <Text style={styles.illustrationEmoji}>🌸</Text>
-              <Text style={styles.illustrationCaption}>少女立绘占位 — Phase 3 接入</Text>
-            </View>
-          ) : null}
         </ScrollView>
       </View>
 
@@ -307,99 +312,103 @@ export const ChatView: React.FC = () => {
         </View>
       ) : null}
 
-      <AttachZone onFilePicked={onFilePicked} buttonLabel={Platform.OS === 'web' ? 'Drop / click' : 'Tap to attach'}>
-        <View style={[styles.composer, { paddingBottom: isMobile ? Math.max(4, insets.bottom - 4) : 4 }]}>
-          {pendingFiles.length > 0 ? (
-            <ScrollView horizontal style={styles.fileStrip} contentContainerStyle={styles.fileStripContent}>
-              {pendingFiles.map((f) => (
-                <View key={f.uri} style={styles.fileChip}>
-                  <FileCard
-                    name={f.name}
-                    kind={f.kind}
-                    size={f.size}
-                    uri={f.uri}
-                    expanded={expandedFile === f.uri}
-                    onToggle={() => setExpandedFile(expandedFile === f.uri ? null : f.uri)}
-                    onRemove={() => removeFile(f.uri)}
-                    previewContent={f.previewContent}
-                  />
-                </View>
-              ))}
-            </ScrollView>
-          ) : null}
-          {voiceOn && voicePartial ? (
-            <Text style={styles.voicePartial} numberOfLines={2}>🎙 {voicePartial}…</Text>
-          ) : null}
-          <View style={styles.composerInputRow}>
-            <Pressable onPress={pickImage} hitSlop={8} style={styles.toolBtn}>
-              <Text style={styles.toolBtnText}>🖼</Text>
-            </Pressable>
-            <TextField
+      <View style={styles.composerWrap}>
+        {pendingFiles.length > 0 ? (
+          <ScrollView horizontal style={styles.fileStrip} contentContainerStyle={styles.fileStripContent}>
+            {pendingFiles.map((f) => (
+              <View key={f.uri} style={styles.fileChip}>
+                <FileCard
+                  name={f.name}
+                  kind={f.kind}
+                  size={f.size}
+                  uri={f.uri}
+                  expanded={expandedFile === f.uri}
+                  onToggle={() => setExpandedFile(expandedFile === f.uri ? null : f.uri)}
+                  onRemove={() => removeFile(f.uri)}
+                  previewContent={f.previewContent}
+                />
+              </View>
+            ))}
+          </ScrollView>
+        ) : null}
+        {voiceOn && voicePartial ? (
+          <Text style={[styles.voicePartial, { color: accent.accent.fg }]} numberOfLines={2}>🎙 {voicePartial}…</Text>
+        ) : null}
+        <View style={styles.composerInputRow}>
+          <Pressable onPress={pickImage} hitSlop={8} style={styles.toolBtn}>
+            <Text style={styles.toolBtnText}>🖼</Text>
+          </Pressable>
+          <View style={[styles.composerInputBox, { borderColor: neutral.border }]}>
+            <TextInput
               value={input}
               onChangeText={setInput}
               onKeyPress={onKeyPress}
-              placeholder={isMobile ? 'Type a message…' : 'Type a message...  (Enter to send, Shift+Enter for newline)'}
+              placeholder={isMobile ? 'Message Hermes…' : 'Type a message...  (Enter to send, Shift+Enter for newline)'}
+              placeholderTextColor={neutral.inkMuted}
               multiline
-              style={[styles.composerInput, { flex: 1 }]}
+              style={styles.composerInput}
             />
-            <Pressable
-              onPress={toggleVoice}
-              hitSlop={8}
-              style={[styles.toolBtn, voiceOn ? styles.toolBtnOn : null]}
-            >
-              <Text style={[styles.toolBtnText, voiceOn ? styles.toolBtnTextOn : null]}>🎙</Text>
-            </Pressable>
           </View>
-          <View style={styles.composerRow}>
-            <Text style={styles.hint} numberOfLines={1}>
-              {streaming
-                ? 'Hermes is typing…'
-                : pendingFiles.length > 0
-                  ? `${pendingFiles.length} file(s) attached`
-                  : isMobile ? 'tap send' : 'Press Enter to send'}
-            </Text>
-            {streaming ? (
-              <Button label="Stop" onPress={onStop} small />
-            ) : (
-              <Button label="Send" default onPress={send} disabled={!input.trim()} small />
-            )}
-          </View>
+          <Pressable
+            onPress={toggleVoice}
+            hitSlop={8}
+            style={[styles.toolBtn, voiceOn ? styles.toolBtnOn : null]}
+          >
+            <Text style={[styles.toolBtnText, voiceOn ? styles.toolBtnTextOn : null]}>🎙</Text>
+          </Pressable>
         </View>
-      </AttachZone>
+        <View style={styles.composerRow}>
+          <Text style={styles.hint} numberOfLines={1}>
+            {streaming
+              ? 'Hermes is typing…'
+              : pendingFiles.length > 0
+                ? `${pendingFiles.length} file(s) attached`
+                : isMobile ? '' : 'Press Enter to send'}
+          </Text>
+          {streaming ? (
+            <Button label="Stop" onPress={onStop} small />
+          ) : (
+            <Button label="Send" default onPress={send} disabled={!input.trim()} small />
+          )}
+        </View>
+      </View>
     </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  canvas: { flex: 1, backgroundColor: palette.canvas, margin: 0, padding: 0 },
+  canvas: { flex: 1, backgroundColor: neutral.bg, margin: 0, padding: 0 },
   scroll: { flex: 1 },
   scrollContent: { paddingTop: space.sm, paddingBottom: space.lg },
   illustration: { alignItems: 'center', marginTop: space.lg, opacity: 0.6 },
   illustrationEmoji: { fontSize: 48 },
-  illustrationCaption: { ...type.ui, color: palette.inkMuted, marginTop: 4, fontStyle: 'italic' },
-  composer: { paddingHorizontal: space.xs },
+  illustrationCaption: { ...type.caption, color: neutral.inkMuted, marginTop: 4, fontStyle: 'italic' },
+  composerWrap: { paddingHorizontal: space.sm, paddingTop: space.xs, paddingBottom: space.sm, backgroundColor: neutral.bg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: neutral.border },
   fileStrip: { maxHeight: 140, marginBottom: 4 },
   fileStripContent: { paddingRight: 8 },
   fileChip: { marginRight: 4, minWidth: 180, maxWidth: 240 },
-  composerInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
-  composerInput: { minHeight: 56, maxHeight: 140 },
-  toolBtn: {
-    width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: palette.surface,
-    borderTopWidth: 1, borderLeftWidth: 1, borderTopColor: palette.bevelHi, borderLeftColor: palette.bevelHi,
-    borderRightWidth: 1, borderBottomWidth: 1, borderRightColor: palette.bevelLo, borderBottomColor: palette.bevelLo,
+  composerInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.xs, marginTop: space.xs },
+  composerInputBox: {
+    flex: 1, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: space.sm, paddingVertical: 2, backgroundColor: neutral.surface, minHeight: 40, justifyContent: 'center',
   },
-  toolBtnText: { fontSize: 18, color: palette.ink, lineHeight: 22 },
-  toolBtnOn: { backgroundColor: palette.err, borderTopColor: palette.bevelLo, borderLeftColor: palette.bevelLo, borderRightColor: palette.bevelHi, borderBottomColor: palette.bevelHi },
+  composerInput: { ...type.body, color: neutral.ink, padding: 0, minHeight: 32, maxHeight: 140 },
+  toolBtn: {
+    width: 40, height: 40, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: neutral.surface,
+    borderRadius: radius.md,
+    borderWidth: 1, borderColor: neutral.border,
+  },
+  toolBtnText: { fontSize: 18, color: neutral.ink, lineHeight: 22 },
+  toolBtnOn: { backgroundColor: neutral.err, borderColor: neutral.err },
   toolBtnTextOn: { color: '#fff' },
-  voicePartial: { ...type.ui, color: palette.inkBlue, fontStyle: 'italic', marginBottom: 4 },
-  composerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
-  hint: { ...type.ui, color: palette.inkMuted, fontStyle: 'italic', flex: 1, marginRight: 8 },
+  voicePartial: { fontSize: 12, fontStyle: 'italic', marginBottom: 4 }, // color applied inline via accent
+  composerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, marginBottom: 4 },
+  hint: { ...type.caption, color: neutral.inkMuted, flex: 1, marginRight: 8 },
   errorBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: palette.err, paddingHorizontal: 8, paddingVertical: 4, marginHorizontal: space.xs,
+    backgroundColor: neutral.err, paddingHorizontal: 8, paddingVertical: 4, marginHorizontal: space.sm, marginTop: 4, borderRadius: radius.sm,
   },
-  errorText: { ...type.ui, color: '#fff', flex: 1, marginRight: 8 },
+  errorText: { ...type.caption, color: '#fff', flex: 1, marginRight: 8 },
   errorDismiss: { color: '#fff', fontSize: 18, paddingHorizontal: 4 },
 });

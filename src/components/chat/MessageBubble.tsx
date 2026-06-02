@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, ActionSheetIOS, Platform, Share, Clipboard } from 'react-native';
-import { palette, type } from '../../theme';
+import { neutral, type, space, radius, useTheme } from '../../theme';
 import { Message } from '../../types';
 import { FileCard } from './FileCard';
 import { isNarrow } from '../../utils/platform';
@@ -11,22 +11,8 @@ export interface MessageBubbleProps {
   isLast: boolean;
 }
 
-/**
- * Minimal in-house markdown renderer. We avoid pulling react-native-markdown-display
- * for the v0 build to keep cold start fast and bundle small. This handles:
- * - # / ## / ### headings
- * - **bold**, *italic*, `code`
- * - bullet lists (- ...)
- * - numbered lists (1. ...)
- * - fenced code blocks (```...```)
- * - tables (| a | b |)
- * - blockquote (> ...)
- * - horizontal rules (---)
- * - inline links [text](url) → render as text
- *
- * The output is a flat list of `Block`s which we render as RN views.
- */
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message, isLast }) => {
+  const accent = useTheme();
   const blocks = useMemo(() => parseMarkdown(message.content), [message.content]);
   const [expanded, setExpanded] = useState<number | null>(null);
 
@@ -44,19 +30,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
         },
       );
     } else {
-      // Android / web: best-effort — copy and share, no native action sheet
       Clipboard.setString(message.content);
     }
   }, [message.content]);
 
   return (
-    <Pressable
-      onLongPress={onLongPress}
-      style={[styles.row, isUser ? styles.rowUser : styles.rowAssistant]}
-    >
+    <View style={[styles.row, isUser ? styles.rowUser : styles.rowAssistant]}>
       {!isUser ? <MascotAvatar small={isNarrow} /> : null}
 
-      <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}>
+      <View style={[
+        styles.bubble,
+        isUser
+          ? [styles.bubbleUser, { backgroundColor: accent.accent.fg }]
+          : [styles.bubbleAssistant, { borderColor: neutral.border }],
+      ]}>
         {message.attachments && message.attachments.length > 0 ? (
           <View style={styles.attachments}>
             {message.attachments.map((a, i) => (
@@ -76,18 +63,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
         ) : null}
 
         {blocks.length === 0 && !showCursor ? (
-          // Empty assistant placeholder — show a typing dot row
-          isUser ? null : <TypingDots />
+          !isUser ? <TypingDots /> : null
         ) : (
-          blocks.map((b, i) => <Block key={i} block={b} />)
+          blocks.map((b, i) => <Block key={i} block={b} isUser={isUser} />)
         )}
 
-        {showCursor ? <Cursor /> : null}
-
-        {isLast && message.status === 'done' ? <Text style={[styles.heartbeat, isUser ? styles.heartbeatUser : styles.heartbeatAssistant]}>✓</Text> : null}
-        {message.status === 'error' ? <Text style={styles.errMark}>⚠</Text> : null}
+        {showCursor ? <Cursor isUser={isUser} /> : null}
+        {isLast && message.status === 'done' ? (
+          <Text style={[styles.heartbeat, isUser ? styles.heartbeatUser : [styles.heartbeatAssistant, { color: neutral.inkMuted }]]}>✓</Text>
+        ) : null}
+        {message.status === 'error' ? <Text style={styles.errMark}>⚠ error</Text> : null}
       </View>
-    </Pressable>
+    </View>
   );
 }, (prev, next) =>
   prev.isLast === next.isLast &&
@@ -98,18 +85,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
   prev.message.attachments === next.message.attachments,
 );
 
-// ─── Mascot avatar (left side of assistant messages) ────────────────────────
+// ─── Mascot avatar ───────────────────────────────────────────────────────────
 
 const MascotAvatar: React.FC<{ small?: boolean }> = ({ small = false }) => {
-  const size = small ? 28 : 36;
+  const size = small ? 26 : 32;
   return (
-    <View style={[styles.avatar, { width: size, height: size }]}>
+    <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}>
       <Text style={{ fontSize: size * 0.6 }}>🌸</Text>
     </View>
   );
 };
 
-// ─── Typing dots & cursor ───────────────────────────────────────────────────
+// ─── Typing & cursor ──────────────────────────────────────────────────────────
 
 const TypingDots: React.FC = () => (
   <View style={styles.typingRow}>
@@ -130,27 +117,21 @@ const Dot: React.FC<{ delay: number }> = ({ delay }) => {
       t3 = setTimeout(tick, 700);
     };
     const start = setTimeout(tick, delay);
-    return () => {
-      clearTimeout(start);
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
+    return () => { clearTimeout(start); clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [delay]);
-
   return <View style={[styles.dot, phase === 1 ? styles.dotMid : phase === 2 ? styles.dotHi : styles.dotLo]} />;
 };
 
-const Cursor: React.FC = () => {
+const Cursor: React.FC<{ isUser: boolean }> = ({ isUser }) => {
   const [on, setOn] = useState(true);
   useEffect(() => {
     const t = setInterval(() => setOn((v) => !v), 480);
     return () => clearInterval(t);
   }, []);
-  return <Text style={[styles.cursor, on ? null : styles.cursorOff]}>▍</Text>;
+  return <Text style={[styles.cursor, isUser ? styles.cursorOnAccent : styles.cursorOnNeutral, on ? null : styles.cursorOff]}>▍</Text>;
 };
 
-// ─── parser / renderer (unchanged from v0) ─────────────────────────────────
+// ─── parser ─────────────────────────────────────────────────────────────────
 
 type Block =
   | { kind: 'h1' | 'h2' | 'h3'; text: InlineSpan[] }
@@ -176,33 +157,24 @@ function parseMarkdown(src: string): Block[] {
   while (i < lines.length) {
     const line = lines[i];
     if (!line.trim()) { i++; continue; }
-
     if (line.startsWith('```')) {
       const lang = line.slice(3).trim();
       const buf: string[] = [];
       i++;
-      while (i < lines.length && !lines[i].startsWith('```')) {
-        buf.push(lines[i]);
-        i++;
-      }
+      while (i < lines.length && !lines[i].startsWith('```')) { buf.push(lines[i]); i++; }
       i++;
       blocks.push({ kind: 'code', lang, text: buf.join('\n') });
       continue;
     }
-
     if (line.startsWith('|')) {
       const header = parseInline(line);
       i++;
       if (i < lines.length && /^\|[\s:|-]+\|/.test(lines[i])) i++;
       const rows: InlineSpan[][] = [];
-      while (i < lines.length && lines[i].startsWith('|')) {
-        rows.push(parseInline(lines[i]));
-        i++;
-      }
+      while (i < lines.length && lines[i].startsWith('|')) { rows.push(parseInline(lines[i])); i++; }
       blocks.push({ kind: 'table', header, rows });
       continue;
     }
-
     if (/^#{1,3}\s/.test(line)) {
       const m = line.match(/^(#+)\s+(.*)$/)!;
       const level = m[1].length as 1 | 2 | 3;
@@ -210,49 +182,28 @@ function parseMarkdown(src: string): Block[] {
       i++;
       continue;
     }
-
     if (/^[-*+]\s/.test(line)) {
       const items: InlineSpan[][] = [];
-      while (i < lines.length && /^[-*+]\s/.test(lines[i])) {
-        items.push(parseInline(lines[i].replace(/^[-*+]\s/, '')));
-        i++;
-      }
+      while (i < lines.length && /^[-*+]\s/.test(lines[i])) { items.push(parseInline(lines[i].replace(/^[-*+]\s/, ''))); i++; }
       blocks.push({ kind: 'ul', items });
       continue;
     }
-
     if (/^\d+\.\s/.test(line)) {
       const items: InlineSpan[][] = [];
-      while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
-        items.push(parseInline(lines[i].replace(/^\d+\.\s/, '')));
-        i++;
-      }
+      while (i < lines.length && /^\d+\.\s/.test(lines[i])) { items.push(parseInline(lines[i].replace(/^\d+\.\s/, ''))); i++; }
       blocks.push({ kind: 'ol', items });
       continue;
     }
-
     if (line.startsWith('> ')) {
       const buf: string[] = [];
-      while (i < lines.length && lines[i].startsWith('> ')) {
-        buf.push(lines[i].slice(2));
-        i++;
-      }
+      while (i < lines.length && lines[i].startsWith('> ')) { buf.push(lines[i].slice(2)); i++; }
       blocks.push({ kind: 'blockquote', text: parseInline(buf.join(' ')) });
       continue;
     }
-
-    if (/^---+\s*$/.test(line)) {
-      blocks.push({ kind: 'hr' });
-      i++;
-      continue;
-    }
-
+    if (/^---+\s*$/.test(line)) { blocks.push({ kind: 'hr' }); i++; continue; }
     const buf: string[] = [line];
     i++;
-    while (i < lines.length && lines[i].trim() && !/^(#{1,3}\s|```|[-*+]\s|\d+\.\s|>\s|---+\s|\|)/.test(lines[i])) {
-      buf.push(lines[i]);
-      i++;
-    }
+    while (i < lines.length && lines[i].trim() && !/^(#{1,3}\s|```|[-*+]\s|\d+\.\s|>\s|---+\s|\|)/.test(lines[i])) { buf.push(lines[i]); i++; }
     blocks.push({ kind: 'p', text: parseInline(buf.join(' ')) });
   }
   return blocks;
@@ -269,7 +220,7 @@ function parseInline(s: string): InlineSpan[] {
       if (end > -1) { flush(); spans.push({ t: 'bold', v: parseInline(s.slice(i + 2, end)) }); i = end + 2; continue; }
     }
     if (s[i] === '*' && s[i + 1] !== '*') {
-      const end = findUnescaped(s, '*', i + 1);
+      const end = s.indexOf('*', i + 1);
       if (end > -1) { flush(); spans.push({ t: 'italic', v: parseInline(s.slice(i + 1, end)) }); i = end + 1; continue; }
     }
     if (s[i] === '`') {
@@ -283,41 +234,36 @@ function parseInline(s: string): InlineSpan[] {
         if (end > -1) {
           flush();
           spans.push({ t: 'link', text: s.slice(i + 1, close), url: s.slice(close + 2, end) });
-          i = end + 1;
-          continue;
+          i = end + 1; continue;
         }
       }
     }
-    buf += s[i];
-    i++;
+    buf += s[i]; i++;
   }
   flush();
   return spans;
 }
 
-function findUnescaped(s: string, ch: string, from: number): number {
-  for (let i = from; i < s.length; i++) if (s[i] === ch) return i;
-  return -1;
-}
-
-const Block: React.FC<{ block: Block }> = ({ block }) => {
+const Block: React.FC<{ block: Block; isUser: boolean }> = ({ block, isUser }) => {
+  const codeTextColor = isUser ? '#fff' : neutral.ink;
+  const codeBlockBg = isUser ? '#00000022' : neutral.bg;
   switch (block.kind) {
-    case 'h1': return <Text style={styles.h1}><Inlines spans={block.text} /></Text>;
-    case 'h2': return <Text style={styles.h2}><Inlines spans={block.text} /></Text>;
-    case 'h3': return <Text style={styles.h3}><Inlines spans={block.text} /></Text>;
-    case 'p':  return <Text style={styles.p}><Inlines spans={block.text} /></Text>;
+    case 'h1': return <Text style={[styles.h1, isUser && styles.h1User]}><Inlines spans={block.text} /></Text>;
+    case 'h2': return <Text style={[styles.h2, isUser && styles.h2User]}><Inlines spans={block.text} /></Text>;
+    case 'h3': return <Text style={[styles.h3, isUser && styles.h3User]}><Inlines spans={block.text} /></Text>;
+    case 'p':  return <Text style={[styles.p, isUser && styles.pUser]}><Inlines spans={block.text} /></Text>;
     case 'code':
       return (
-        <View style={styles.codeBlock}>
-          {block.lang ? <Text style={styles.codeLang}>{block.lang}</Text> : null}
-          <Text style={styles.codeText} selectable>{block.text}</Text>
+        <View style={[styles.codeBlock, { backgroundColor: codeBlockBg }]}>
+          {block.lang ? <Text style={[styles.codeLang, isUser && styles.codeLangUser]}>{block.lang}</Text> : null}
+          <Text style={[styles.codeText, { color: codeTextColor }]} selectable>{block.text}</Text>
         </View>
       );
     case 'ul':
       return (
         <View>
           {block.items.map((it, i) => (
-            <Text key={i} style={styles.li}>•  <Inlines spans={it} /></Text>
+            <Text key={i} style={[styles.li, isUser && styles.liUser]}>•  <Inlines spans={it} /></Text>
           ))}
         </View>
       );
@@ -325,29 +271,29 @@ const Block: React.FC<{ block: Block }> = ({ block }) => {
       return (
         <View>
           {block.items.map((it, i) => (
-            <Text key={i} style={styles.li}>{i + 1}.  <Inlines spans={it} /></Text>
+            <Text key={i} style={[styles.li, isUser && styles.liUser]}>{i + 1}.  <Inlines spans={it} /></Text>
           ))}
         </View>
       );
     case 'blockquote':
       return (
-        <View style={styles.bq}>
-          <Text style={styles.bqText}><Inlines spans={block.text} /></Text>
+        <View style={[styles.bq, { borderLeftColor: isUser ? '#ffffff66' : neutral.border }]}>
+          <Text style={[styles.bqText, isUser && styles.bqTextUser]}><Inlines spans={block.text} /></Text>
         </View>
       );
-    case 'hr': return <View style={styles.hr} />;
+    case 'hr': return <View style={[styles.hr, { backgroundColor: isUser ? '#ffffff33' : neutral.border }]} />;
     case 'table':
       return (
-        <View style={styles.table}>
+        <View style={[styles.table, { borderColor: isUser ? '#ffffff33' : neutral.border }]}>
           <View style={styles.tableRow}>
             {block.header.map((c, i) => (
-              <Text key={i} style={[styles.tableCell, styles.tableHeader]}><Inlines spans={[c]} /></Text>
+              <Text key={i} style={[styles.tableCell, styles.tableHeader, isUser && styles.tableHeaderUser]}><Inlines spans={[c]} /></Text>
             ))}
           </View>
           {block.rows.map((row, ri) => (
             <View key={ri} style={styles.tableRow}>
               {row.map((c, ci) => (
-                <Text key={ci} style={styles.tableCell}><Inlines spans={[c]} /></Text>
+                <Text key={ci} style={[styles.tableCell, isUser && styles.tableCellUser, { borderColor: isUser ? '#ffffff33' : neutral.border }]}><Inlines spans={[c]} /></Text>
               ))}
             </View>
           ))}
@@ -369,89 +315,79 @@ const Inlines: React.FC<{ spans: InlineSpan[] }> = ({ spans }) => (
   </>
 );
 
-// ─── Styles — iMessage-flavored bubbles on top of the Win95 palette ─────────
+// ─── styles (flat) ──────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'flex-end', marginVertical: 4, paddingHorizontal: 6 },
+  row: { flexDirection: 'row', alignItems: 'flex-end', marginVertical: 6, paddingHorizontal: space.sm },
   rowUser: { justifyContent: 'flex-end' },
   rowAssistant: { justifyContent: 'flex-start' },
 
   avatar: {
     marginRight: 6, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: palette.surface,
-    borderTopLeftRadius: 14, borderTopRightRadius: 14, borderBottomLeftRadius: 4, borderBottomRightRadius: 14,
+    backgroundColor: neutral.surfaceMuted,
   },
 
   bubble: {
     maxWidth: '78%',
-    paddingVertical: 7,
-    paddingHorizontal: 11,
-    borderRadius: 16,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 18,
   },
-  bubbleUser: {
-    backgroundColor: palette.inkBlue,
-    borderBottomRightRadius: 4, // tail
-    marginLeft: 48,
-  },
+  bubbleUser: { borderBottomRightRadius: 4 },
   bubbleAssistant: {
-    backgroundColor: palette.surface,
-    borderTopWidth: 1, borderLeftWidth: 1, borderTopColor: palette.bevelHi, borderLeftColor: palette.bevelHi,
-    borderRightWidth: 1, borderBottomWidth: 1, borderRightColor: palette.bevelDark, borderBottomColor: palette.bevelDark,
-    borderBottomLeftRadius: 4, // tail
+    backgroundColor: neutral.surface,
+    borderWidth: 1, borderBottomLeftRadius: 4,
   },
 
   attachments: { marginBottom: 6 },
 
-  bold: { fontWeight: 'bold' },
+  bold: { fontWeight: '600' },
   italic: { fontStyle: 'italic' },
   inlineCode: {
     fontFamily: 'Courier',
     backgroundColor: '#00000018',
-    color: palette.ink,
   },
-  link: { color: palette.inkLink, textDecorationLine: 'underline' },
+  link: { color: '#007AFF', textDecorationLine: 'underline' },
 
-  h1: { ...type.hero, color: palette.ink, marginTop: 4, marginBottom: 4 },
-  h2: { ...type.title, color: palette.ink, marginTop: 4, marginBottom: 4 },
-  h3: { ...type.uiBold, color: palette.ink, marginTop: 4, marginBottom: 4 },
-  p: { ...type.body, color: palette.ink, marginBottom: 4 },
-  li: { ...type.body, color: palette.ink, marginLeft: 4, marginBottom: 2 },
+  h1: { ...type.display, color: neutral.ink, marginTop: 4, marginBottom: 4, fontSize: 20 },
+  h1User: { color: '#fff' },
+  h2: { ...type.title, color: neutral.ink, marginTop: 4, marginBottom: 4 },
+  h2User: { color: '#fff' },
+  h3: { ...type.uiBold, fontSize: 14, color: neutral.ink, marginTop: 4, marginBottom: 4 },
+  h3User: { color: '#fff' },
+  p: { ...type.body, color: neutral.ink, marginBottom: 4 },
+  pUser: { color: '#fff' },
+  li: { ...type.body, color: neutral.ink, marginLeft: 4, marginBottom: 2 },
+  liUser: { color: '#fff' },
 
-  // Code block — when inside an assistant bubble, invert so it pops
-  codeBlock: {
-    backgroundColor: '#1a1a2e', padding: 8, marginVertical: 4, borderRadius: 4,
-  },
-  codeLang: { ...type.ui, color: palette.cyberBlue, marginBottom: 2 },
-  codeText: { ...type.code, color: '#e6e6fa' },
+  codeBlock: { padding: 8, marginVertical: 4, borderRadius: 6 },
+  codeLang: { ...type.caption, color: neutral.inkMuted, marginBottom: 2 },
+  codeLangUser: { color: '#ffffff99' },
+  codeText: { ...type.code },
 
-  bq: {
-    borderLeftWidth: 3, borderLeftColor: palette.bevelDark,
-    paddingLeft: 8, marginVertical: 4,
-  },
-  bqText: { ...type.body, color: palette.inkSoft, fontStyle: 'italic' },
-  hr: { height: 1, backgroundColor: palette.bevelDark, marginVertical: 8 },
-  table: {
-    borderTopWidth: 1, borderLeftWidth: 1, borderColor: palette.bevelDark,
-    marginVertical: 4, alignSelf: 'flex-start',
-  },
+  bq: { borderLeftWidth: 3, paddingLeft: 8, marginVertical: 4 },
+  bqText: { ...type.body, color: neutral.inkSoft, fontStyle: 'italic' },
+  bqTextUser: { color: '#fff' },
+  hr: { height: 1, marginVertical: 8 },
+  table: { borderTopWidth: 1, borderLeftWidth: 1, marginVertical: 4, alignSelf: 'flex-start' },
   tableRow: { flexDirection: 'row' },
-  tableCell: {
-    ...type.ui, color: palette.ink,
-    paddingHorizontal: 6, paddingVertical: 3,
-    borderRightWidth: 1, borderBottomWidth: 1, borderColor: palette.bevelDark,
-  },
-  tableHeader: { fontWeight: 'bold', backgroundColor: palette.surface },
+  tableCell: { ...type.caption, color: neutral.ink, paddingHorizontal: 6, paddingVertical: 3, borderRightWidth: 1, borderBottomWidth: 1 },
+  tableCellUser: { color: '#fff' },
+  tableHeader: { fontWeight: '600', backgroundColor: neutral.surfaceMuted },
+  tableHeaderUser: { backgroundColor: '#ffffff22', color: '#fff' },
 
-  cursor: { color: palette.ink, fontWeight: 'bold' },
+  cursor: { fontWeight: '600' },
+  cursorOnAccent: { color: '#fff' },
+  cursorOnNeutral: { color: neutral.ink },
   cursorOff: { opacity: 0 },
-  heartbeat: { color: palette.ok, fontSize: 10, marginTop: 2 },
+  heartbeat: { fontSize: 10, marginTop: 2 },
   heartbeatUser: { color: '#ffffffcc', alignSelf: 'flex-end' },
   heartbeatAssistant: { alignSelf: 'flex-end' },
-  errMark: { color: palette.err, fontSize: 12, marginTop: 2 },
+  errMark: { color: neutral.err, fontSize: 11, marginTop: 2, fontWeight: '600' },
 
   typingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, height: 18 },
-  dot: { width: 6, height: 6, borderRadius: 3, marginHorizontal: 2, backgroundColor: palette.inkMuted },
-  dotLo: { opacity: 0.35, transform: [{ translateY: 0 }] },
-  dotMid: { opacity: 0.7, transform: [{ translateY: -2 }] },
+  dot: { width: 6, height: 6, borderRadius: 3, marginHorizontal: 2, backgroundColor: neutral.inkMuted },
+  dotLo: { opacity: 0.3, transform: [{ translateY: 0 }] },
+  dotMid: { opacity: 0.6, transform: [{ translateY: -2 }] },
   dotHi: { opacity: 1, transform: [{ translateY: -4 }] },
 });

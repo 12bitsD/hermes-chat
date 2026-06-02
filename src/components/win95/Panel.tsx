@@ -1,22 +1,23 @@
 import React from 'react';
 import { View, ViewProps, StyleSheet } from 'react-native';
-import { palette, bevel, BevelKey, radius } from '../../theme';
+import { neutral, radius } from '../../theme';
 
 export interface PanelProps extends ViewProps {
-  variant?: BevelKey;
+  variant?: 'flat' | 'card';
   background?: string;
   radius?: number;
   padding?: number;
 }
 
 /**
- * Panel — generic raised/inset/sunken surface. Use everywhere a chunk of UI
- * wants the chunky Win95 3D edge.
+ * Panel — flat surface. Two modes:
+ *   - flat (default): just a background fill, no border
+ *   - card: 1px border + light background, like a Notion card
  */
 export const Panel: React.FC<PanelProps> = ({
-  variant = 'raised',
-  background = palette.surface,
-  radius: r = 0,
+  variant = 'flat',
+  background = neutral.surface,
+  radius: r = radius.md,
   padding,
   style,
   children,
@@ -26,15 +27,9 @@ export const Panel: React.FC<PanelProps> = ({
     <View
       {...rest}
       style={[
-        { backgroundColor: background },
-        {
-          borderTopLeftRadius: r,
-          borderTopRightRadius: r,
-          borderBottomLeftRadius: r,
-          borderBottomRightRadius: r,
-        },
+        { backgroundColor: background, borderRadius: r },
         padding != null ? { padding } : null,
-        bevel[variant],
+        variant === 'card' ? styles.card : null,
         style,
       ]}
     >
@@ -42,3 +37,10 @@ export const Panel: React.FC<PanelProps> = ({
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  card: {
+    borderWidth: 1,
+    borderColor: neutral.border,
+  },
+});

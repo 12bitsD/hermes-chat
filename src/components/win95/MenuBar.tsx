@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, ViewStyle } from 'react-native';
-import { palette, type, space } from '../../theme';
+import { neutral, type, space, radius } from '../../theme';
 
 export interface MenuBarProps {
   items: string[];
@@ -10,15 +10,15 @@ export interface MenuBarProps {
 }
 
 /**
- * MenuBar — the iconic top-of-window file/edit/view/help row.
- * Each item highlights when active. Press selects (toggles a dropdown above it).
+ * MenuBar — flat row of text items, subtle hover. Used for the right-side
+ * prompt navigator's category filter, etc.
  */
 export const MenuBar: React.FC<MenuBarProps> = ({ items, activeIndex, onSelect, style }) => {
   return (
     <View
       // @ts-ignore — className is web-only
       className="menu-trigger"
-      style={[styles.row, { backgroundColor: palette.surface }, style]}
+      style={[styles.row, style]}
     >
       {items.map((label, i) => {
         const active = i === activeIndex;
@@ -28,13 +28,13 @@ export const MenuBar: React.FC<MenuBarProps> = ({ items, activeIndex, onSelect, 
             onPress={() => onSelect?.(i)}
             style={[
               styles.item,
-              active ? { backgroundColor: palette.titlebarActive } : null,
+              active ? styles.itemActive : null,
             ]}
           >
             <Text
               style={[
                 styles.label,
-                active ? { color: palette.titlebarActiveText } : { color: palette.ink },
+                active ? styles.labelActive : null,
               ]}
             >
               {label}
@@ -54,7 +54,12 @@ const styles = StyleSheet.create({
   },
   item: {
     paddingHorizontal: space.sm,
-    paddingVertical: 2,
+    paddingVertical: 4,
+    borderRadius: radius.sm,
   },
-  label: { ...type.ui },
+  itemActive: {
+    backgroundColor: neutral.surfaceMuted,
+  },
+  label: { ...type.caption, color: neutral.inkSoft },
+  labelActive: { color: neutral.ink, fontWeight: '600' },
 });
