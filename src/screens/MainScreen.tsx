@@ -190,6 +190,8 @@ export const MainScreen: React.FC = () => {
             }
           }}
           remoteSessions={hermesSnapshot?.sessions}
+          remoteJobs={hermesSnapshot?.jobs}
+          remoteSkills={hermesSnapshot?.skills}
           remoteGatewayReachable={!!hermesSnapshot}
           insets={insets}
         />
@@ -340,6 +342,8 @@ interface DrawerProps {
   onDelete: (id: string) => void;
   onPickRemote?: (id: string) => void;
   remoteSessions?: { id: string; title?: string; messageCount?: number; updatedAt?: number }[];
+  remoteJobs?: { id: string }[];
+  remoteSkills?: { id: string }[];
   remoteGatewayReachable: boolean;
   insets: { top: number; bottom: number; left: number; right: number };
 }
@@ -347,7 +351,7 @@ interface DrawerProps {
 const SessionDrawer: React.FC<DrawerProps> = ({
   open, onClose, conversations, order, activeId,
   onPick, onNew, onDelete, onPickRemote,
-  remoteSessions, remoteGatewayReachable,
+  remoteSessions, remoteJobs, remoteSkills, remoteGatewayReachable,
   insets,
 }) => {
   const accent = useTheme();
@@ -378,6 +382,21 @@ const SessionDrawer: React.FC<DrawerProps> = ({
             <Text style={[styles.drawerAction, { color: accent.accent.fg }]}>+ New</Text>
           </Pressable>
         </View>
+
+        {/* Hermes dashboard strip — single-line summary of what the
+            gateway currently advertises. Sits at the very top of the
+            drawer so a phone user opening it gets instant context
+            for what's running on their computer. */}
+        {remoteSessions ? (
+          <View style={styles.dashStrip}>
+            <Text style={styles.dashStripText} numberOfLines={1}>
+              <Text style={styles.dashEmoji}>📡</Text>{' '}
+              <Text style={styles.dashCount}>{remoteSessions.length}</Text> sessions
+              {remoteJobs ? <> · <Text style={styles.dashEmoji}>📋</Text>{' '} <Text style={styles.dashCount}>{remoteJobs.length}</Text> jobs</> : null}
+              {remoteSkills ? <> · <Text style={styles.dashEmoji}>✨</Text>{' '} <Text style={styles.dashCount}>{remoteSkills.length}</Text> skills</> : null}
+            </Text>
+          </View>
+        ) : null}
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: space.sm }}>
           {remoteSessions && remoteSessions.length > 0 ? (
             <View style={{ marginBottom: 8 }}>
@@ -553,6 +572,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: space.md, paddingBottom: space.sm, marginBottom: space.xs,
   },
+  dashStrip: {
+    paddingHorizontal: space.md, paddingVertical: space.xs,
+    backgroundColor: neutral.surfaceMuted,
+    borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth,
+    borderTopColor: neutral.border, borderBottomColor: neutral.border,
+  },
+  dashStripText: { ...type.caption, color: neutral.inkMuted, fontSize: 10 },
+  dashEmoji: { fontSize: 11 },
+  dashCount: { ...type.uiBold, color: '#007AFF', fontFamily: 'Courier' },
   drawerTitle: { ...type.title, color: neutral.ink, fontSize: 16 },
   drawerAction: { ...type.caption, fontWeight: '600' },
   drawerItem: { paddingHorizontal: space.md, paddingVertical: space.sm, marginVertical: 2, borderRadius: radius.sm },
