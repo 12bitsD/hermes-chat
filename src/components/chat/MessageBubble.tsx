@@ -178,21 +178,66 @@ const QuickReplies: React.FC<{ onPick: (text: string) => void; content: string }
   // Always-offer chips
   chips.push({ label: '👍 Continue', text: 'Continue. What else?' });
 
+  const accent = useTheme();
+
   return (
     <View style={styles.quickReplies}>
       {chips.map((c, i) => (
-        <Pressable
-          key={i}
-          onPress={() => onPick(c.text)}
-          style={({ pressed }) => [
-            styles.quickReplyChip,
-            pressed ? styles.quickReplyChipPressed : null,
-          ]}
-        >
-          <Text style={styles.quickReplyText} numberOfLines={1}>{c.label}</Text>
-        </Pressable>
+        <QuickReplyChip key={i} label={c.label} onPress={() => onPick(c.text)} accent={accent} />
       ))}
     </View>
+  );
+};
+
+/**
+ * QuickReplyChip — a one-tap follow-up under an assistant reply.
+ *
+ * Micro-interaction: spring lifts to translateY -2 + accent-soft tint
+ * + scale 0.96 on press. The chip lives inside a single Animated.Value
+ * so the lift + scale + tint read as one motion, not three.
+ */
+const QuickReplyChip: React.FC<{
+  label: string;
+  onPress: () => void;
+  accent: ReturnType<typeof useTheme>;
+}> = ({ label, onPress, accent }) => {
+  const press = useRef(new Animated.Value(0)).current;
+  const [focused, setFocused] = useState(false);
+  const lift = press.interpolate({ inputRange: [0, 1], outputRange: [0, -2] });
+  const scale = press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.96] });
+  const tintOpacity = press.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
+
+  const animateTo = (to: number) => {
+    Animated.spring(press, { toValue: to, useNativeDriver: true, friction: 6, tension: 220 }).start();
+  };
+  const handlePressIn = () => animateTo(1);
+  const handlePressOut = () => animateTo(0);
+
+  return (
+    <Animated.View style={{ transform: [{ translateY: lift }, { scale }] }}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={({ pressed }) => [
+          styles.quickReplyChip,
+          focused ? styles.quickReplyChipFocused : null,
+        ]}
+      >
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: accent.accent.soft, opacity: tintOpacity, borderRadius: 12 },
+          ]}
+        />
+        <Text style={styles.quickReplyText} numberOfLines={1}>{label}</Text>
+      </Pressable>
+    </Animated.View>
   );
 };
 
@@ -516,13 +561,17 @@ const styles = StyleSheet.create({
   cursorOnNeutral: { color: neutral.ink },
   cursorOff: { opacity: 0 },
   heartbeat: { fontSize: 10, marginTop: 2 },
-  quickReplies: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
+  quickReplies: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
   quickReplyChip: {
-    paddingHorizontal: 8, paddingVertical: 4,
+    paddingHorizontal: 10, paddingVertical: 5,
     borderRadius: 12, borderWidth: 1, borderColor: neutral.border,
-    backgroundColor: neutral.surface,
+    backgroundColor: neutral.surface, overflow: 'hidden',
   },
-  quickReplyChipPressed: { backgroundColor: neutral.surfaceMuted, opacity: 0.7 },
+  quickReplyChipFocused: {
+    borderColor: '#FFB6C1',
+    shadowColor: '#FFB6C1', shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5, shadowRadius: 4, elevation: 2,
+  },
   quickReplyText: { ...type.captionSm, color: neutral.ink, fontSize: 12 },
   heartbeatUser: { color: '#ffffffcc', alignSelf: 'flex-end' },
   heartbeatAssistant: { alignSelf: 'flex-end' },

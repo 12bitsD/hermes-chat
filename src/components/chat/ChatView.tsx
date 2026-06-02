@@ -611,9 +611,7 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
           <Text style={[styles.voicePartial, { color: accent.accent.fg }]} numberOfLines={2}>🎙 {voicePartial}…</Text>
         ) : null}
         <View style={styles.composerInputRow}>
-          <Pressable onPress={pickImage} hitSlop={8} style={styles.toolBtn}>
-            <Text style={styles.toolBtnEmoji}>📎</Text>
-          </Pressable>
+          <ToolBtn emoji="📎" onPress={pickImage} accent={accent} onHaptic={haptic} />
           <View style={[styles.composerInputBox, inputFocused ? styles.composerInputBoxFocused : null, { borderColor: inputFocused ? accent.accent.fg : neutral.border }]}>
             <TextInput
               value={input}
@@ -627,15 +625,14 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
               style={styles.composerInput}
             />
           </View>
-          <Pressable
+          <ToolBtn
+            emoji={voiceOn ? '⏹' : '🎙'}
             onPress={toggleVoice}
-            hitSlop={8}
-            style={[styles.toolBtn, voiceOn ? styles.toolBtnOn : null]}
-          >
-            <Text style={[styles.toolBtnEmoji, voiceOn ? styles.toolBtnEmojiOn : null]}>
-              {voiceOn ? '⏹' : '🎙'}
-            </Text>
-          </Pressable>
+            accent={accent}
+            onHaptic={haptic}
+            active={voiceOn}
+            activeColor={neutral.err}
+          />
         </View>
         <View style={styles.composerRow}>
           <Text style={styles.hint} numberOfLines={1}>
@@ -776,17 +773,7 @@ const styles = StyleSheet.create({
     shadowColor: '#FFB6C1', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 6, elevation: 2,
   },
   composerInput: { ...type.body, color: neutral.ink, padding: 0, minHeight: 32, maxHeight: 140 },
-  toolBtn: {
-    width: 44, height: 44, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: neutral.surface,
-    borderRadius: 22,
-    borderWidth: 1, borderColor: neutral.border,
-  },
-  toolBtnText: { fontSize: 18, color: neutral.ink, lineHeight: 22 },
-  toolBtnEmoji: { fontSize: 22, color: neutral.ink, lineHeight: 26 },
-  toolBtnEmojiOn: { color: '#fff' },
-  toolBtnOn: { backgroundColor: neutral.err, borderColor: neutral.err },
-  toolBtnTextOn: { color: '#fff' },
+  // Tool button styles live on the ToolBtn component (below)
   micGlyph: { width: 22, height: 22 },
   voicePartial: { ...type.captionSm, fontStyle: 'italic', marginBottom: 4 },
   errorDismiss: { color: '#fff', fontSize: 18, paddingHorizontal: 4 },
@@ -796,4 +783,86 @@ const styles = StyleSheet.create({
     backgroundColor: neutral.err, paddingHorizontal: 8, paddingVertical: 4, marginHorizontal: space.sm, marginTop: 4, borderRadius: radius.sm,
   },
   errorText: { ...type.caption, color: '#fff', flex: 1, marginRight: 8 },
+});
+
+/**
+ * ToolBtn — the round buttons flanking the composer input.
+ *
+ * A micro-interaction you can feel:
+ *   - press → spring scale-down to 0.86, accent-soft tint, light haptic
+ *   - release → spring back to 1
+ *   - active=true → background flips to a "recording" color
+ *     (default red for the voice button) so the user can see at a
+ *     glance whether the mic is hot
+ *
+ * The button also gets a soft pink focus ring when focused via D-pad /
+ * keyboard, so TV / hardware-keyboard navigation (or any future web
+ * keyboard support) is visible to assistive tech.
+ */
+const ToolBtn: React.FC<{
+  emoji: string;
+  onPress: () => void;
+  accent: ReturnType<typeof useTheme>;
+  onHaptic?: (kind?: 'light' | 'medium' | 'heavy') => void;
+  active?: boolean;
+  activeColor?: string;
+  accessibilityLabel?: string;
+}> = ({ emoji, onPress, accent, onHaptic, active, activeColor, accessibilityLabel }) => {
+  const scale = useRef(new Animated.Value(1)).current;
+  const [focused, setFocused] = useState(false);
+
+  const animateTo = (to: number) => {
+    Animated.spring(scale, {
+      toValue: to,
+      useNativeDriver: true,
+      friction: 6,
+      tension: 220,
+    }).start();
+  };
+
+  const handlePressIn = () => {
+    animateTo(0.86);
+    onHaptic?.('light');
+  };
+  const handlePressOut = () => animateTo(1);
+
+  const activeBg = active ? (activeColor ?? neutral.err) : null;
+
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? emoji}
+        style={[
+          toolBtnStyles.base,
+          activeBg ? { backgroundColor: activeBg, borderColor: activeBg } : null,
+          focused ? toolBtnStyles.focused : null,
+        ]}
+      >
+        <Text style={[toolBtnStyles.emoji, active ? toolBtnStyles.emojiActive : null]}>{emoji}</Text>
+      </Pressable>
+    </Animated.View>
+  );
+};
+
+const toolBtnStyles = StyleSheet.create({
+  base: {
+    width: 44, height: 44, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: neutral.surface,
+    borderRadius: 22,
+    borderWidth: 1, borderColor: neutral.border,
+  },
+  emoji: { fontSize: 22, color: neutral.ink, lineHeight: 26 },
+  emojiActive: { color: '#fff' },
+  focused: {
+    borderColor: '#FFB6C1',
+    shadowColor: '#FFB6C1', shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55, shadowRadius: 6, elevation: 2,
+  },
 });
