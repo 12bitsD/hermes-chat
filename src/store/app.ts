@@ -22,6 +22,8 @@ interface AppState {
   renameConversation: (id: string, title: string) => void;
   appendMessage: (conversationId: string, message: Message) => void;
   updateMessage: (conversationId: string, messageId: string, patch: Partial<Message>) => void;
+  /** Import a remote Hermes session as a local conversation (id is mirrored). */
+  importRemoteSession: (sessionId: string, title: string, messages: any[]) => void;
   clearMessages: (conversationId: string) => void;
 
   addPrompt: (p: Omit<PromptTemplate, 'id' | 'createdAt' | 'usageCount'>) => string;
@@ -164,6 +166,45 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeConversationId: id,
     }));
     return id;
+  },
+
+  /**
+   * Import a remote Hermes session as a local conversation. The local
+   * conversation id is set to the Hermes sessionId so the next time
+   * the user sends a message, the gateway sees the same id and
+   * stitches the turn into the existing session (instead of starting
+   * a new one).
+   */
+  importRemoteSession: (sessionId, title, messages) => {
+    const conv: Conversation = {
+      id: sessionId, // mirror — same id, same session
+      title: title || sessionId,
+      createdAt: now(),
+      updatedAt: now(),
+      messages: (messages || []).map((m: any, i: number) => ({
+        id: m.id ?? `imported-${i}-${Math.random().toString(36).slice(2, 8)}`,
+        role: m.role ?? 'user',
+        content: typeof m.content === 'string' ? m.content : (m.text ?? ''),
+        status: 'done' as const,
+        createdAt: m.created_at ?? m.createdAt ?? now(),
+      })),
+    };
+    set((s) => {
+      // If a local conversation with this id already exists, merge.
+      const existing = s.conversations[sessionId];
+      if (existing) {
+        return {
+          conversations: { ...s.conversations, [sessionId]: { ...existing, ...conv, id: sessionId } },
+          conversationOrder: s.conversationOrder.includes(sessionId) ? s.conversationOrder : [sessionId, ...s.conversationOrder],
+          activeConversationId: sessionId,
+        };
+      }
+      return {
+        conversations: { ...s.conversations, [sessionId]: conv },
+        conversationOrder: [sessionId, ...s.conversationOrder],
+        activeConversationId: sessionId,
+      };
+    });
   },
 
   setActiveConversation: (id) => set({ activeConversationId: id }),

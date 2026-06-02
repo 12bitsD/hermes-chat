@@ -12,6 +12,7 @@ import { SakuraRain } from '../components/SakuraRain';
 import { useAppStore } from '../store/app';
 import { getLLMClient } from '../store/persistence';
 import { useHermesSnapshot } from '../store/useHermesSnapshot';
+import { HermesSessionsClient } from '../services/llm/sessions-client';
 import { isNarrow, isNative, watchScreen } from '../utils/platform';
 import { haptic } from '../utils/haptic';
 
@@ -150,15 +151,36 @@ export const MainScreen: React.FC = () => {
           onPick={(id) => { setActive(id); setDrawerOpen(false); }}
           onNew={() => { createConv(); setDrawerOpen(false); }}
           onDelete={(id) => deleteConv(id)}
-          onPickRemote={(id) => {
-            // Stub: a full impl would fetch /api/sessions/{id}/messages
-            // and create a local mirror conversation. For now, the
-            // affordance exists so the user can see their remote
-            // sessions in the drawer and tap them — the import story
-            // is a follow-up. We just close the drawer to give a
-            // visible response.
+          onPickRemote={async (id) => {
             haptic('light');
-            setDrawerOpen(false);
+            try {
+              const cfg = {
+                provider: 'hermes-gateway' as const,
+                endpoint: settings.llmEndpoint || 'http://127.0.0.1:8642/v1/chat/completions',
+                apiKey: settings.llmApiKey || undefined,
+                defaultModel: settings.llmModel || 'default',
+              };
+              const client = new HermesSessionsClient(cfg);
+              const [session, messages] = await Promise.all([
+                client.get(id),
+                client.messages(id),
+              ]);
+              if (!session) {
+                haptic('error');
+                setDrawerOpen(false);
+                return;
+              }
+              useAppStore.getState().importRemoteSession(
+                id,
+                session.title || id,
+                (messages as any[]) ?? [],
+              );
+              haptic('success');
+            } catch (e) {
+              haptic('error');
+            } finally {
+              setDrawerOpen(false);
+            }
           }}
           remoteSessions={hermesSnapshot?.sessions}
           remoteGatewayReachable={!!hermesSnapshot}
