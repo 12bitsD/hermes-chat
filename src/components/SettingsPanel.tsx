@@ -329,6 +329,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
               </View>
             </Section>
 
+            {/* ── Live snapshot ──────────────────────────────────────── */}
+            <Section title="Live snapshot">
+              <HermesSnapshotCard />
+            </Section>
+
             {/* ── Hermes headers ──────────────────────────────────────── */}
             <Section title="Hermes headers">
               <Text style={styles.label}>Session key (X-Hermes-Session-Key)</Text>
@@ -532,6 +537,54 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title
   </View>
 );
 
+/**
+ * HermesSnapshotCard — small live read-out of what the gateway is
+ * currently advertising: counts of skills, toolsets, sessions, jobs
+ * plus a "last synced Ns ago" timestamp. The data is already in the
+ * store thanks to useHermesSnapshot (mounted at MainScreen), so this
+ * is just a presentational component.
+ */
+const HermesSnapshotCard: React.FC = () => {
+  const snap = useAppStore((s) => s.hermesSnapshot);
+  const accent = useTheme();
+
+  if (!snap) {
+    return (
+      <Text style={styles.hint}>
+        Gateway offline — last sync never succeeded. The status bar at the
+        bottom of the app shows the live dot; if it's red, start the
+        Hermes gateway on port 8642 and the snapshot will populate within
+        30 s.
+      </Text>
+    );
+  }
+
+  const age = Math.max(0, Math.floor((Date.now() - snap.updatedAt) / 1000));
+  const ageLabel = age < 5 ? 'just now' : age < 60 ? `${age}s ago` : `${Math.floor(age / 60)}m ago`;
+
+  return (
+    <View style={{ gap: 6 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+        <Chip emoji="💬" count={snap.sessions.length} label="sessions" fg={accent.accent.fg} />
+        <Chip emoji="✨" count={snap.skills.length} label="skills" fg={accent.accent.fg} />
+        <Chip emoji="🛠" count={snap.toolsets.length} label="toolsets" fg={accent.accent.fg} />
+        <Chip emoji="📋" count={snap.jobs.length} label="jobs" fg={accent.accent.fg} />
+      </View>
+      <Text style={styles.hint}>
+        Last synced {ageLabel} · auto-refreshes every 30 s.
+      </Text>
+    </View>
+  );
+};
+
+const Chip: React.FC<{ emoji: string; count: number; label: string; fg: string }> = ({ emoji, count, label, fg }) => (
+  <View style={styles.snapChip}>
+    <Text style={[styles.snapChipEmoji]}>{emoji}</Text>
+    <Text style={[styles.snapChipCount, { color: fg }]}>{count}</Text>
+    <Text style={styles.snapChipLabel}>{label}</Text>
+  </View>
+);
+
 import { TextField } from './win95';
 
 const styles = StyleSheet.create({
@@ -570,6 +623,15 @@ const styles = StyleSheet.create({
   capsItemBlurb: { ...type.caption, color: neutral.inkMuted, marginTop: 1 },
 
   skillCount: { ...type.caption, color: neutral.inkMuted },
+  snapChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: radius.sm, backgroundColor: neutral.surface,
+    borderWidth: 1, borderColor: neutral.border,
+  },
+  snapChipEmoji: { fontSize: 12 },
+  snapChipCount: { ...type.uiBold, fontSize: 12 },
+  snapChipLabel: { ...type.caption, color: neutral.inkMuted, fontSize: 10 },
   listGrid: { gap: 4 },
   listItem: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: radius.sm, backgroundColor: neutral.surface, gap: 2 },
   listItemId: { ...type.caption, color: neutral.inkMuted, fontFamily: 'Courier' },
