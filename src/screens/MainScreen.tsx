@@ -37,7 +37,8 @@ export const MainScreen: React.FC = () => {
   }, []);
   // Periodic provider reachability probe so the status dot stays honest
   const settings = useAppStore((s) => s.settings);
-  const [providerOk, setProviderOk] = useState<boolean | null>(null);
+  const providerOk = useAppStore((s) => s.gatewayReachable);
+  const setProviderOk = useAppStore((s) => s.setGatewayReachable);
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -52,7 +53,7 @@ export const MainScreen: React.FC = () => {
     };
     tick();
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
-  }, [settings.llmProvider, settings.llmEndpoint, settings.llmApiKey]);
+  }, [settings.llmProvider, settings.llmEndpoint, settings.llmApiKey, setProviderOk]);
 
   useEffect(() => {
     if (narrow) setDrawerOpen(false);
@@ -124,10 +125,13 @@ export const MainScreen: React.FC = () => {
       {/* ── Body ────────────────────────────────────────────────────── */}
       {narrow ? (
         <View style={styles.mobileBody}>
-          <ChatView />
+          <ChatView onOpenDrawer={() => setDrawerOpen(true)} />
         </View>
       ) : (
-        <DesktopLayout onOpenSettings={() => setSettingsOpen(true)} />
+        <DesktopLayout
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenDrawer={() => setDrawerOpen(true)}
+        />
       )}
 
       {/* ── Mobile drawer ───────────────────────────────────────────── */}
@@ -187,7 +191,7 @@ export const MainScreen: React.FC = () => {
 
 // ─── Desktop three-pane ──────────────────────────────────────────────────────
 
-const DesktopLayout: React.FC<{ onOpenSettings: () => void }> = ({ onOpenSettings }) => {
+const DesktopLayout: React.FC<{ onOpenSettings: () => void; onOpenDrawer: () => void }> = ({ onOpenSettings, onOpenDrawer }) => {
   const accent = useTheme();
   const conversations = useAppStore((s) => s.conversations);
   const order = useAppStore((s) => s.conversationOrder);
@@ -236,7 +240,7 @@ const DesktopLayout: React.FC<{ onOpenSettings: () => void }> = ({ onOpenSetting
       </View>
 
       <View style={styles.desktopCenter}>
-        <ChatView />
+        <ChatView onOpenDrawer={onOpenDrawer} />
       </View>
 
       <View style={styles.desktopRight}>

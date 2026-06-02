@@ -9,6 +9,7 @@ import { Button } from './win95';
 import { useAppStore } from '../store/app';
 import { syncLLMFromSettings, getLLMClient } from '../store/persistence';
 import { defaultEndpoint, PRESETS, ProviderId } from '../services/llm/config';
+import { fetchCapabilities, HermesCapabilities, CAPABILITY_LABELS } from '../services/llm/capabilities';
 import { accentList } from '../theme';
 import { haptic } from '../utils/haptic';
 

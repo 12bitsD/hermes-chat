@@ -40,13 +40,15 @@ function getCurrentToolEvents(conversationId: string, messageId: string) {
   return m?.toolEvents ?? [];
 }
 
-export const ChatView: React.FC = () => {
+export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer }) => {
   const insets = useSafeAreaInsets();
   const accent = useTheme();
   const conversationId = useAppStore((s) => s.activeConversationId);
   const messages = useAppStore((s) => s.getActiveMessages());
   const appendMessage = useAppStore((s) => s.appendMessage);
   const updateMessage = useAppStore((s) => s.updateMessage);
+  const createConv = useAppStore((s) => s.createConversation);
+  const providerOk = useAppStore((s) => s.gatewayReachable);
   const settings = useAppStore((s) => s.settings);
   const systemPrompt = useAppStore((s) => s.settings.systemPrompt);
   const maxTokens = useAppStore((s) => s.settings.maxTokens);
@@ -522,7 +524,15 @@ export const ChatView: React.FC = () => {
           onContentSizeChange={stickToBottom}
         >
           {messages.filter((m) => m.role !== 'system').length === 0 ? (
-            <EmptyState onPick={(body) => setInput(body)} />
+            <EmptyState
+              status={providerOk === false ? 'offline' : providerOk === null ? 'connecting' : 'idle'}
+              onAction={(id) => {
+                if (id === 'voice') toggleVoice();
+                else if (id === 'photo') pickImage();
+                else if (id === 'new-session') createConv();
+                else if (id === 'open-existing') onOpenDrawer?.();
+              }}
+            />
           ) : (
             messages
               .filter((m) => m.role !== 'system')

@@ -30,6 +30,10 @@ interface AppState {
   togglePinPrompt: (id: string) => void;
 
   updateSettings: (patch: Partial<AppSettings>) => void;
+  /** Live reachability of the configured LLM endpoint. null = probing. */
+  gatewayReachable: boolean | null;
+  /** Optional override used by the background probe. */
+  setGatewayReachable: (ok: boolean | null) => void;
 }
 
 const now = () => Date.now();
@@ -66,20 +70,6 @@ A clean little chatbot client for talking to **Hermes** — built with Expo + Re
 - PDF / PPT in-line preview
 - Real illustrations on every screen
 `,
-    },
-    {
-      id: uid(),
-      role: 'user',
-      status: 'done',
-      createdAt: now() - 5000,
-      content: 'Hello cutie! ✨',
-    },
-    {
-      id: uid(),
-      role: 'assistant',
-      status: 'done',
-      createdAt: now() - 4000,
-      content: "Hey hey senpai~ (◕‿◕) I'm **Hermes** — your kawaii little chatbot ♡\n\nHere's what I can do for you:\n\n- *Explain* tricky concepts\n- *Write* code in TS / Python / Go\n- *Summarize* long articles\n- *Brainstorm* names and ideas\n\n> Tip: try one of the suggestion cards below, or type anything you like.",
     },
   ],
 };
@@ -254,4 +244,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
 
   updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
+
+  gatewayReachable: null as boolean | null,
+  setGatewayReachable: (ok: boolean | null) => set({ gatewayReachable: ok }),
 }));
