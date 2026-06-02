@@ -468,18 +468,71 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
               {jobs === null ? (
                 <Text style={styles.hint}>Gateway offline — couldn't list /api/jobs.</Text>
               ) : jobs.length === 0 ? (
-                <Text style={styles.hint}>No jobs queued on the gateway. Pause / resume / run is a follow-up.</Text>
+                <Text style={styles.hint}>No jobs queued on the gateway.</Text>
               ) : (
                 <View style={styles.listGrid}>
-                  {jobs.map((j) => (
-                    <View key={j.id} style={styles.listItem}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Text style={styles.listItemName} numberOfLines={1}>{j.title || j.id}</Text>
-                        <Text style={styles.jobState}>{j.state}</Text>
+                  {jobs.map((j) => {
+                    const isRunning = j.state === 'running';
+                    const isPaused = j.state === 'paused';
+                    return (
+                      <View key={j.id} style={styles.listItem}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Text style={styles.listItemName} numberOfLines={1}>{j.title || j.id}</Text>
+                          <Text style={[styles.jobState, jobStateColor(j.state)]}>{j.state || 'queued'}</Text>
+                        </View>
+                        {j.schedule ? <Text style={styles.listItemDesc} numberOfLines={1}>{j.schedule}</Text> : null}
+                        <View style={{ flexDirection: 'row', gap: 4, marginTop: 4 }}>
+                          {isRunning ? (
+                            <Button
+                              label="⏸ Pause"
+                              onPress={async () => {
+                                const c = new HermesJobsClient({
+                                  provider: 'hermes-gateway',
+                                  endpoint: endpoint || defaultEndpoint(),
+                                  apiKey: apiKey || undefined,
+                                  defaultModel: model,
+                                });
+                                haptic((await c.pause(j.id)) ? 'success' : 'error');
+                                fetchJobsNow();
+                              }}
+                              small ghost
+                            />
+                          ) : (
+                            <Button
+                              label="▶ Run"
+                              onPress={async () => {
+                                const c = new HermesJobsClient({
+                                  provider: 'hermes-gateway',
+                                  endpoint: endpoint || defaultEndpoint(),
+                                  apiKey: apiKey || undefined,
+                                  defaultModel: model,
+                                });
+                                haptic((await c.run(j.id)) ? 'success' : 'error');
+                                fetchJobsNow();
+                              }}
+                              small ghost
+                            />
+                          )}
+                          {isPaused ? (
+                            <Button
+                              label="↪ Resume"
+                              onPress={async () => {
+                                const c = new HermesJobsClient({
+                                  provider: 'hermes-gateway',
+                                  endpoint: endpoint || defaultEndpoint(),
+                                  apiKey: apiKey || undefined,
+                                  defaultModel: model,
+                                });
+                                haptic((await c.resume(j.id)) ? 'success' : 'error');
+                                fetchJobsNow();
+                              }}
+                              small ghost
+                            />
+                          ) : null}
+                        </View>
                       </View>
-                      {j.schedule ? <Text style={styles.listItemDesc} numberOfLines={1}>{j.schedule}</Text> : null}
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               )}
             </Section>
@@ -584,6 +637,17 @@ const Chip: React.FC<{ emoji: string; count: number; label: string; fg: string }
     <Text style={styles.snapChipLabel}>{label}</Text>
   </View>
 );
+
+function jobStateColor(state: string | undefined) {
+  switch (state) {
+    case 'running':  return { color: '#16A34A' };
+    case 'paused':   return { color: '#FBBF24' };
+    case 'failed':   return { color: '#DC2626' };
+    case 'done':     return { color: '#007AFF' };
+    case 'queued':   return { color: neutral.inkMuted };
+    default:         return { color: neutral.inkMuted };
+  }
+}
 
 import { TextField } from './win95';
 
