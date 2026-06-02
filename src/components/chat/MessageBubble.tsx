@@ -10,9 +10,10 @@ import { speak } from '../../utils/speak';
 export interface MessageBubbleProps {
   message: Message;
   isLast: boolean;
+  onSyncToHermes?: () => void;
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message, isLast }) => {
+export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message, isLast, onSyncToHermes }) => {
   const accent = useTheme();
   const blocks = useMemo(() => parseMarkdown(message.content), [message.content]);
   const [expanded, setExpanded] = useState<number | null>(null);
@@ -25,21 +26,27 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
     if (Platform.OS === 'ios') {
       const opts = isUser
         ? ['Copy', 'Share', 'Speak', 'Cancel']
-        : ['Copy', 'Share', 'Speak', 'Regenerate', 'Cancel'];
+        : onSyncToHermes
+          ? ['Copy', 'Share', 'Speak', '📡 Sync from Hermes', 'Regenerate', 'Cancel']
+          : ['Copy', 'Share', 'Speak', 'Regenerate', 'Cancel'];
+      const cancelIdx = opts.length - 1;
+      const regenIdx  = onSyncToHermes ? 4 : 3;
+      const syncIdx   = onSyncToHermes ? 3 : -1;
       ActionSheetIOS.showActionSheetWithOptions(
-        { options: opts, cancelButtonIndex: opts.length - 1, destructiveButtonIndex: undefined },
+        { options: opts, cancelButtonIndex: cancelIdx, destructiveButtonIndex: undefined },
         (idx) => {
           if (idx === 0) Clipboard.setString(message.content);
           else if (idx === 1) Share.share({ message: message.content }).catch(() => {});
           else if (idx === 2) speak(message.content);
-          else if (!isUser && idx === 3) haptic('warning'); // regenerate placeholder
+          else if (idx === syncIdx && onSyncToHermes) { haptic('light'); onSyncToHermes(); }
+          else if (idx === regenIdx) haptic('warning');
         },
       );
     } else {
       // Android / web: copy and let the user long-press the system paste menu for more
       Clipboard.setString(message.content);
     }
-  }, [message.content, isUser]);
+  }, [message.content, isUser, onSyncToHermes]);
 
   return (
     <View style={[styles.row, isUser ? styles.rowUser : styles.rowAssistant]}>
