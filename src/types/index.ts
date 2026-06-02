@@ -60,7 +60,7 @@ export interface PromptTemplate {
   createdAt: number;
 }
 
-export type LLMProvider = 'hermes-gateway' | 'mock' | 'openai-compatible' | 'ollama';
+export type LLMProvider = 'hermes-gateway';
 export type Accent = 'mono' | 'ocean' | 'sakura' | 'forest';
 
 export interface AppSettings {

@@ -167,11 +167,11 @@ export const MainScreen: React.FC = () => {
         <View style={styles.statusLeft}>
           <View style={[styles.statusBarDot, { backgroundColor: statusDotColorFor(settings.llmProvider, providerOk) }]} />
           <Text style={styles.statusText}>
-            {settings.llmProvider === 'mock' ? '🧪 Mock' : (settings.llmProvider as string)}
+            {settings.llmProvider === 'hermes-gateway' ? '🌐 Hermes' : (settings.llmProvider as string)}
           </Text>
-          {providerOk === false && settings.llmProvider !== 'mock' ? (
+          {providerOk === false ? (
             <Text style={[styles.statusText, { color: neutral.err, marginLeft: 4 }]}>· offline</Text>
-          ) : providerOk === true && settings.llmProvider !== 'mock' ? (
+          ) : providerOk === true ? (
             <Text style={[styles.statusText, { color: neutral.ok, marginLeft: 4 }]}>· online</Text>
           ) : null}
           {(settings as any).useRunsMode ? (

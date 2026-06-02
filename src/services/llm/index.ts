@@ -1,16 +1,24 @@
 /**
- * LLM client registry. The app calls `getLLMClient()` and gets back whatever
- * client matches the current config. Settings can be flipped at runtime and
- * the next request will pick up the new provider.
+ * LLM client registry. The app calls `getLLMClient()` and gets back the
+ * Hermes client. There is no other provider — Hermes Chat is the client
+ * for the Hermes agent, period.
  */
 
 import type { LLMClient } from './types';
 import type { LLMConfig } from './config';
-import { MockLLMClient } from './mock-client';
 import { HermesGatewayClient } from './hermes-client';
 
 let cachedConfig: LLMConfig | null = null;
 let cachedClient: LLMClient | null = null;
+
+function emptyConfig(): LLMConfig {
+  return {
+    provider: 'hermes-gateway',
+    endpoint: '',
+    apiKey: '',
+    defaultModel: 'default',
+  };
+}
 
 export function configureLLM(cfg: LLMConfig) {
   cachedConfig = cfg;
@@ -19,19 +27,13 @@ export function configureLLM(cfg: LLMConfig) {
 
 export function getLLMClient(): LLMClient {
   if (cachedClient) return cachedClient;
-  if (!cachedConfig) {
-    cachedConfig = { provider: 'mock', endpoint: '', apiKey: '', defaultModel: 'default' };
-  }
-  cachedClient = cachedConfig.provider === 'mock'
-    ? new MockLLMClient()
-    : new HermesGatewayClient(cachedConfig);
+  if (!cachedConfig) cachedConfig = emptyConfig();
+  cachedClient = new HermesGatewayClient(cachedConfig);
   return cachedClient;
 }
 
 export function getLLMConfig(): LLMConfig {
-  if (!cachedConfig) {
-    cachedConfig = { provider: 'mock', endpoint: '', apiKey: '', defaultModel: 'default' };
-  }
+  if (!cachedConfig) cachedConfig = emptyConfig();
   return cachedConfig;
 }
 
@@ -46,3 +48,5 @@ export type { LLMConfig } from './config';
 export { HermesRunsClient, type RunEvent, type RunRequest, type RunStreamCallbacks, callbacksFromStreamHandlers } from './runs-client';
 export { HermesGatewayClient, type HermesRequestContext } from './hermes-client';
 export { HermesSessionsClient, type HermesSession } from './sessions-client';
+export { HermesJobsClient, type HermesJob, type JobState } from './jobs-client';
+export { fetchSkills, fetchToolsets, type HermesSkill, type HermesToolset } from './discovery';

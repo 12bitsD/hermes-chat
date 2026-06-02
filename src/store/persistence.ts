@@ -114,15 +114,13 @@ async function runAutoDetectIfNeeded() {
   } catch { /* ignore */ }
 
   const result = await autoDetectLLM();
-  if (!result.found || !result.provider || !result.endpoint) return;
+  if (!result.found) return;
 
-  // Flip the active provider
-  useAppStore.getState().updateSettings({
-    llmProvider: result.provider as any,
-    llmEndpoint: result.endpoint,
-  });
+  // Confirm the active endpoint resolves; if so, leave defaults in place —
+  // the user can still fine-tune in Settings. We just mark the connection
+  // as healthy so the status bar reflects it.
   syncLLMFromSettings();
-  console.log('[persistence] auto-detected LLM:', result.provider, result.endpoint);
+  console.log('[persistence] auto-detected Hermes gateway');
 }
 
 export { getLLMClient };
