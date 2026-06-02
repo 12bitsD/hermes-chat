@@ -5,6 +5,7 @@ import { Message } from '../../types';
 import { FileCard } from './FileCard';
 import { isNarrow } from '../../utils/platform';
 import { haptic } from '../../utils/haptic';
+import { speak } from '../../utils/speak';
 
 export interface MessageBubbleProps {
   message: Message;
@@ -22,17 +23,23 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
   const onLongPress = useCallback(() => {
     haptic('medium');
     if (Platform.OS === 'ios') {
+      const opts = isUser
+        ? ['Copy', 'Share', 'Speak', 'Cancel']
+        : ['Copy', 'Share', 'Speak', 'Regenerate', 'Cancel'];
       ActionSheetIOS.showActionSheetWithOptions(
-        { options: ['Copy', 'Share', 'Cancel'], cancelButtonIndex: 2 },
+        { options: opts, cancelButtonIndex: opts.length - 1, destructiveButtonIndex: undefined },
         (idx) => {
           if (idx === 0) Clipboard.setString(message.content);
-          if (idx === 1) Share.share({ message: message.content }).catch(() => {});
+          else if (idx === 1) Share.share({ message: message.content }).catch(() => {});
+          else if (idx === 2) speak(message.content);
+          else if (!isUser && idx === 3) haptic('warning'); // regenerate placeholder
         },
       );
     } else {
+      // Android / web: copy and let the user long-press the system paste menu for more
       Clipboard.setString(message.content);
     }
-  }, [message.content]);
+  }, [message.content, isUser]);
 
   return (
     <View style={[styles.row, isUser ? styles.rowUser : styles.rowAssistant]}>
