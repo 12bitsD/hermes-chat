@@ -46,26 +46,40 @@ const seedConversation: Conversation = {
       id: uid(),
       role: 'system',
       status: 'done',
-      createdAt: now(),
-      content: `# Welcome to Hermes Chat
+      createdAt: now() - 6000,
+      content: `# Welcome to Hermes Chat ✦
 
-A Win95-styled chatbot client for talking to **Hermes** — built with Expo + React Native.
+A clean little chatbot client for talking to **Hermes** — built with Expo + React Native.
 
 ## What works in this build
 
-- Win95 chrome (title bars, raised panels, inset text fields, 3D buttons)
+- Flat kawaii aesthetic 🌸
 - Mock streaming LLM responses
-- Markdown rendering (headings, lists, code, tables)
+- Markdown rendering (headings / lists / code / tables / blockquote)
 - Right-side prompt template navigator
+- Voice + image attachments (mocked in web)
 - Multiple conversations
 
 ## What doesn't yet
 
 - Real Hermes backend (still mock)
 - PDF / PPT in-line preview
-- Voice / image attachments
-- 美少女 illustrations
+- Real illustrations on every screen
 `,
+    },
+    {
+      id: uid(),
+      role: 'user',
+      status: 'done',
+      createdAt: now() - 5000,
+      content: 'Hello cutie! ✨',
+    },
+    {
+      id: uid(),
+      role: 'assistant',
+      status: 'done',
+      createdAt: now() - 4000,
+      content: "Hey hey senpai~ (◕‿◕) I'm **Hermes** — your kawaii little chatbot ♡\n\nHere's what I can do for you:\n\n- *Explain* tricky concepts\n- *Write* code in TS / Python / Go\n- *Summarize* long articles\n- *Brainstorm* names and ideas\n\n> Tip: try one of the suggestion cards below, or type anything you like.",
     },
   ],
 };

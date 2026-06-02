@@ -104,7 +104,7 @@ export const MainScreen: React.FC = () => {
         <View style={styles.appBarRight}>
           {narrow ? (
             <Pressable hitSlop={12} onPress={() => setPromptsOpen(true)} style={styles.iconBtn}>
-              <Text style={styles.iconBtnText}>✨</Text>
+              <Text style={[styles.iconBtnText, { color: accent.accent.fg }]}>✨</Text>
             </Pressable>
           ) : null}
           {narrow ? (
@@ -116,7 +116,7 @@ export const MainScreen: React.FC = () => {
             </Pressable>
           ) : null}
           <Pressable hitSlop={12} onPress={() => { haptic('medium'); createConv(); }} style={styles.iconBtn}>
-            <Text style={[styles.iconBtnText, { color: accent.accent.fg }]}>＋</Text>
+            <Text style={[styles.iconBtnText, { color: accent.accent.fg }]}>＋ ♡</Text>
           </Pressable>
         </View>
       </View>

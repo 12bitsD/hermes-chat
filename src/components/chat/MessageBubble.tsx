@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
 
   avatar: {
     marginRight: 6, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: neutral.surfaceMuted,
+    backgroundColor: neutral.surfaceMuted, overflow: 'hidden',
   },
 
   bubble: {
