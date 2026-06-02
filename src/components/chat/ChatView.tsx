@@ -12,6 +12,7 @@ import type { LLMClient } from '../../services/llm';
 import { makeUserMessage, makeAssistantMessage } from '../../services/mock-llm';
 import { isNarrow } from '../../utils/platform';
 import { haptic } from '../../utils/haptic';
+import { throttle } from '../../utils/perf';
 
 /**
  * Scroll-to-bottom smoothing target. RN ScrollView can't animate to "the
@@ -111,6 +112,21 @@ export const ChatView: React.FC = () => {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
+    // Throttle store updates so a high-frequency stream doesn't re-render the
+    // whole list on every char. We still flush the very last update on done/error
+    // so the user always sees the full content.
+    const STREAM_FLUSH_MS = 60;
+    let pendingAcc = '';
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    const flush = () => {
+      flushTimer = null;
+      if (pendingAcc) {
+        updateMessage(conversationId, assistantMsg.id, { content: pendingAcc });
+        pendingAcc = '';
+      }
+    };
+    const scheduleFlush = throttle(() => flush(), STREAM_FLUSH_MS);
+
     // Build the conversation history to send upstream
     const prev = useAppStore.getState().getActiveMessages();
     const historyMessages: { role: 'user' | 'assistant' | 'system'; content: string }[] = [];
@@ -136,13 +152,17 @@ export const ChatView: React.FC = () => {
         {
           onChunk: (chunk) => {
             acc += chunk;
-            updateMessage(conversationId, assistantMsg.id, { content: acc });
+            pendingAcc = acc;
+            // Update local state for the in-flight buffer used by error path
+            scheduleFlush();
           },
           onDone: () => {
+            if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
             updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
             haptic('success');
           },
           onError: (err) => {
+            if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
             const msg = err?.message ?? String(err);
             setStreamError(msg);
             updateMessage(conversationId, assistantMsg.id, {
@@ -154,6 +174,7 @@ export const ChatView: React.FC = () => {
         },
       );
     } catch (e: any) {
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
       const msg = e?.message ?? String(e);
       setStreamError(msg);
       updateMessage(conversationId, assistantMsg.id, {

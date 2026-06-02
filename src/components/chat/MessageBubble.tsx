@@ -26,7 +26,7 @@ export interface MessageBubbleProps {
  *
  * The output is a flat list of `Block`s which we render as RN views.
  */
-export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isLast }) => {
+export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message, isLast }) => {
   const blocks = useMemo(() => parseMarkdown(message.content), [message.content]);
   const [expanded, setExpanded] = useState<number | null>(null);
 
@@ -89,7 +89,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isLast })
       </View>
     </Pressable>
   );
-};
+}, (prev, next) =>
+  prev.isLast === next.isLast &&
+  prev.message.id === next.message.id &&
+  prev.message.role === next.message.role &&
+  prev.message.content === next.message.content &&
+  prev.message.status === next.message.status &&
+  prev.message.attachments === next.message.attachments,
+);
 
 // ─── Mascot avatar (left side of assistant messages) ────────────────────────
 
