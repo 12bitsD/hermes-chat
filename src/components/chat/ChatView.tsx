@@ -745,10 +745,10 @@ const runStyles = StyleSheet.create({
     borderRadius: 8, marginHorizontal: 8, marginTop: 4, marginBottom: 2,
   },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FBBF24' },
-  label: { ...type.caption, fontSize: 12, fontWeight: '600', flex: 1 },
-  elapsed: { ...type.caption, fontSize: 11, fontFamily: 'Courier' },
+  label: { ...type.body, fontSize: 12, fontWeight: '600', flex: 1 },
+  elapsed: { ...type.captionSm, fontSize: 11, fontFamily: 'Courier' },
   stopBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: '#00000022' },
-  stopText: { ...type.caption, fontSize: 11, fontWeight: '700' },
+  stopText: { ...type.captionSm, fontSize: 11, fontWeight: '700' },
 });
 
 const styles = StyleSheet.create({
@@ -788,13 +788,12 @@ const styles = StyleSheet.create({
   toolBtnOn: { backgroundColor: neutral.err, borderColor: neutral.err },
   toolBtnTextOn: { color: '#fff' },
   micGlyph: { width: 22, height: 22 },
-  voicePartial: { fontSize: 12, fontStyle: 'italic', marginBottom: 4 }, // color applied inline via accent
+  voicePartial: { ...type.captionSm, fontStyle: 'italic', marginBottom: 4 },
+  errorDismiss: { color: '#fff', fontSize: 18, paddingHorizontal: 4 },
   composerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, marginBottom: 4 },
   hint: { ...type.caption, color: neutral.inkMuted, flex: 1, marginRight: 8 },
   errorBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: neutral.err, paddingHorizontal: 8, paddingVertical: 4, marginHorizontal: space.sm, marginTop: 4, borderRadius: radius.sm,
   },
   errorText: { ...type.caption, color: '#fff', flex: 1, marginRight: 8 },
-  errorDismiss: { color: '#fff', fontSize: 18, paddingHorizontal: 4 },
 });

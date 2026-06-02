@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   heroImage: { width: '100%', height: '100%', borderRadius: 24, resizeMode: 'cover' },
-  heroTitle: { ...type.hero, color: neutral.ink, fontSize: 26, marginBottom: 2 },
+  heroTitle: { ...type.hero, color: neutral.ink, fontSize: 24, marginBottom: 2 },
   heroSubtitle: { ...type.body, color: neutral.inkSoft, marginBottom: 4, textAlign: 'center' },
   heroHint: { ...type.caption, color: neutral.inkMuted, textAlign: 'center' },
 
@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
   statusCardIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
   statusCardIconGlyph: { fontSize: 18 },
   statusLabel: { ...type.uiBold, color: neutral.ink, fontSize: 13 },
-  statusDetail: { ...type.caption, color: neutral.inkMuted, marginTop: 2 },
+  statusDetail: { ...type.captionSm, color: neutral.inkMuted, marginTop: 2 },
   statusSparkle: { fontSize: 16, marginLeft: 'auto' },
 
   actionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
@@ -322,6 +322,6 @@ const styles = StyleSheet.create({
   actionPressed: { backgroundColor: neutral.surfaceMuted },
   actionIcon: { width: 36, height: 36, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   actionEmoji: { fontSize: 18 },
-  actionLabel: { ...type.uiBold, color: neutral.ink, fontSize: 13 },
-  actionHint: { ...type.caption, color: neutral.inkMuted, marginTop: 2 },
+  actionLabel: { ...type.body, color: neutral.ink, fontSize: 13 },
+  actionHint: { ...type.captionSm, color: neutral.inkMuted, marginTop: 2 },
 });

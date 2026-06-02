@@ -106,8 +106,8 @@ const styles = StyleSheet.create({
     borderWidth: 2, alignItems: 'center', gap: space.sm,
   },
   emoji: { fontSize: 64 },
-  title: { ...type.hero, color: neutral.ink, fontSize: 26 },
-  subtitle: { ...type.body, color: neutral.inkSoft, textAlign: 'center', fontSize: 13 },
+  title: { ...type.hero, color: neutral.ink, fontSize: 24 },
+  subtitle: { ...type.bodyMd, color: neutral.inkSoft, textAlign: 'center', fontSize: 14 },
   statRow: {
     flexDirection: 'row', alignItems: 'center', gap: 0,
     paddingVertical: space.xs, paddingHorizontal: space.sm,
@@ -116,12 +116,12 @@ const styles = StyleSheet.create({
   },
   stat: { alignItems: 'center', paddingHorizontal: space.sm, minWidth: 60 },
   statNum: { fontSize: 18 },
-  statLabel: { ...type.caption, color: neutral.inkMuted, fontSize: 10, marginTop: 2 },
+  statLabel: { ...type.captionXs, color: neutral.inkMuted, fontSize: 10, marginTop: 2 },
   statSep: { width: 1, height: 20 },
   tips: { alignSelf: 'stretch', gap: 6, marginTop: 4, marginBottom: 4 },
   tipRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   tipEmoji: { fontSize: 14, width: 20, textAlign: 'center' },
-  tipText: { ...type.caption, color: neutral.ink, flex: 1, fontSize: 12 },
+  tipText: { ...type.body, color: neutral.ink, flex: 1, fontSize: 13 },
 });
 
 /**

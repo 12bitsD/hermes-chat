@@ -659,23 +659,21 @@ const styles = StyleSheet.create({
   },
   handle: { width: 40, height: 4, backgroundColor: neutral.border, borderRadius: 2, alignSelf: 'center', marginTop: 8 },
   headerRow: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8, gap: 2 },
-  headerTitle: { ...type.title, color: neutral.ink, fontSize: 18 },
-  headerSubtitle: { ...type.caption, color: neutral.inkMuted },
-
+  headerTitle: { ...type.title, color: neutral.ink, fontSize: 19 },
+  headerSubtitle: { ...type.captionSm, color: neutral.inkMuted },
   section: { marginBottom: 14 },
-  sectionTitle: { ...type.caption, color: neutral.inkMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, paddingHorizontal: 4 },
+  sectionTitle: { ...type.captionXs, color: neutral.inkMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, paddingHorizontal: 4 },
   sectionBody: { backgroundColor: neutral.bg, borderRadius: radius.md, borderWidth: 1, borderColor: neutral.border, padding: 10, gap: 8 },
-
-  label: { ...type.caption, color: neutral.inkSoft, fontSize: 11 },
-  hint: { ...type.caption, color: neutral.inkMuted, fontStyle: 'italic', marginTop: 2 },
+  label: { ...type.captionSm, color: neutral.inkSoft, fontSize: 11 },
+  hint: { ...type.captionSm, color: neutral.inkMuted, fontStyle: 'italic', marginTop: 2 },
   probeText: { ...type.caption, fontWeight: '600' },
   modelStrip: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
   modelChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.sm, backgroundColor: neutral.surface, borderWidth: 1, borderColor: neutral.border, fontSize: 11, color: neutral.ink, fontFamily: 'Courier' },
-  // modelChipActive is computed inline against the live accent
+  modelChipActive: { borderColor: '#007AFF', backgroundColor: '#FFD1DC', color: neutral.ink },
   toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
   toggleLabel: { ...type.body, color: neutral.ink, flex: 1 },
 
-  capsModel: { ...type.caption, color: neutral.inkMuted, fontFamily: 'Courier', flex: 1, minWidth: 0 },
+  capsModel: { ...type.captionSm, color: neutral.inkMuted, fontFamily: 'Courier', flex: 1, minWidth: 0 },
   capsGrid: { gap: 4 },
   capsItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, paddingVertical: 6, borderRadius: radius.sm, backgroundColor: neutral.surface },
   capsItemOn: {},
@@ -683,10 +681,10 @@ const styles = StyleSheet.create({
   capsItemMark: { fontSize: 14, fontWeight: '700', width: 14, textAlign: 'center' },
   capsItemMarkOn: { color: neutral.ok },
   capsItemMarkOff: { color: neutral.inkMuted },
-  capsItemLabel: { ...type.uiBold, color: neutral.ink, fontSize: 12 },
-  capsItemBlurb: { ...type.caption, color: neutral.inkMuted, marginTop: 1 },
+  capsItemLabel: { ...type.body, color: neutral.ink, fontSize: 12 },
+  capsItemBlurb: { ...type.captionXs, color: neutral.inkMuted, marginTop: 1 },
 
-  skillCount: { ...type.caption, color: neutral.inkMuted },
+  skillCount: { ...type.captionSm, color: neutral.inkMuted },
   snapChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 8, paddingVertical: 4,
@@ -695,13 +693,13 @@ const styles = StyleSheet.create({
   },
   snapChipEmoji: { fontSize: 12 },
   snapChipCount: { ...type.uiBold, fontSize: 12 },
-  snapChipLabel: { ...type.caption, color: neutral.inkMuted, fontSize: 10 },
+  snapChipLabel: { ...type.captionXs, color: neutral.inkMuted, fontSize: 10 },
   listGrid: { gap: 4 },
   listItem: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: radius.sm, backgroundColor: neutral.surface, gap: 2 },
-  listItemId: { ...type.caption, color: neutral.inkMuted, fontFamily: 'Courier' },
+  listItemId: { ...type.captionXs, color: neutral.inkMuted, fontFamily: 'Courier' },
   listItemName: { ...type.uiBold, color: neutral.ink, fontSize: 12 },
-  listItemDesc: { ...type.caption, color: neutral.inkMuted, marginTop: 1 },
-  jobState: { ...type.caption, color: neutral.inkMuted, fontFamily: 'Courier', marginLeft: 'auto' },
+  listItemDesc: { ...type.captionXs, color: neutral.inkMuted, marginTop: 1 },
+  jobState: { ...type.captionXs, color: neutral.inkMuted, fontFamily: 'Courier', marginLeft: 'auto' },
 
   accentGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   accentCard: {
@@ -712,8 +710,8 @@ const styles = StyleSheet.create({
   },
   // accentCardActive is computed inline against the live accent
   accentSwatch: { width: 24, height: 24, borderRadius: 12 },
-  accentLabel: { ...type.uiBold, color: neutral.ink, fontSize: 12 },
-  accentHint: { ...type.caption, color: neutral.inkMuted, fontFamily: 'Courier' },
+  accentLabel: { ...type.body, color: neutral.ink, fontSize: 12 },
+  accentHint: { ...type.captionXs, color: neutral.inkMuted, fontFamily: 'Courier' },
 
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8 },
 });

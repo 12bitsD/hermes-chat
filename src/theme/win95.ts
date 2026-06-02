@@ -93,14 +93,23 @@ export const space = { hair: 1, xxs: 2, xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xx
 // ─── typography (system font, lean line-height) ──────────────────────────────
 
 export const type = {
-  caption: { fontFamily: 'System', fontSize: 11, lineHeight: 14 } as TextStyle,
-  ui:      { fontFamily: 'System', fontSize: 13, lineHeight: 18 } as TextStyle,
-  uiBold:  { fontFamily: 'System', fontSize: 13, fontWeight: '600', lineHeight: 18 } as TextStyle,
-  body:    { fontFamily: 'System', fontSize: 14, lineHeight: 20 } as TextStyle,
-  title:   { fontFamily: 'System', fontSize: 16, fontWeight: '600', lineHeight: 22 } as TextStyle,
-  display: { fontFamily: 'System', fontSize: 18, fontWeight: '600', lineHeight: 24 } as TextStyle,
-  hero:    { fontFamily: 'System', fontSize: 24, fontWeight: '700', lineHeight: 30 } as TextStyle,
-  code:    { fontFamily: 'Courier', fontSize: 12, lineHeight: 17 } as TextStyle,
+  // Re-organised into a strict 8-step scale so every component
+  // picks a tier, not a fontSize. This collapses 14 different
+  // fontSize values down to 8 and lines each one up with a role.
+  captionXs: { fontFamily: 'System', fontSize: 10, lineHeight: 13 } as TextStyle,
+  captionSm: { fontFamily: 'System', fontSize: 11, lineHeight: 14 } as TextStyle,
+  caption:   { fontFamily: 'System', fontSize: 12, lineHeight: 16 } as TextStyle,
+  body:      { fontFamily: 'System', fontSize: 13, lineHeight: 18 } as TextStyle,
+  bodyMd:    { fontFamily: 'System', fontSize: 14, lineHeight: 20 } as TextStyle,
+  bodyLg:    { fontFamily: 'System', fontSize: 15, lineHeight: 22 } as TextStyle,
+  title:     { fontFamily: 'System', fontSize: 17, fontWeight: '600', lineHeight: 22 } as TextStyle,
+  display:   { fontFamily: 'System', fontSize: 19, fontWeight: '600', lineHeight: 26 } as TextStyle,
+  hero:      { fontFamily: 'System', fontSize: 24, fontWeight: '700', lineHeight: 30 } as TextStyle,
+  // Aliases for components that already say `type.ui` / `type.uiBold`
+  ui:        { fontFamily: 'System', fontSize: 13, lineHeight: 18 } as TextStyle,
+  uiBold:    { fontFamily: 'System', fontSize: 13, fontWeight: '600', lineHeight: 18 } as TextStyle,
+  // Mono — for ids, code, technical data
+  code:      { fontFamily: 'Courier', fontSize: 12, lineHeight: 17 } as TextStyle,
 } as const;
 
 export const shadow = { none: { elevation: 0 } } as const;
