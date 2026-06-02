@@ -615,7 +615,9 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
               ? 'Hermes is typing…'
               : pendingFiles.length > 0
                 ? `${pendingFiles.length} file(s) attached`
-                : isMobile ? '' : 'Press Enter to send'}
+                : conversationId
+                  ? `→ ${settings.llmProvider === 'hermes-gateway' ? 'Hermes' : settings.llmProvider} · ${conversationId.slice(-6)}`
+                  : isMobile ? '' : 'Press Enter to send'}
           </Text>
           {streaming ? (
             <Button label="Stop" onPress={onStop} small />
