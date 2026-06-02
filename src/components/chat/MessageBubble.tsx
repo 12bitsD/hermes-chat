@@ -128,13 +128,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
 
 // ─── Mascot avatar ───────────────────────────────────────────────────────────
 
+/**
+ * MascotAvatar — the assistant's identity in the chat stream.
+ *
+ * avatar.png is 256×256 with the character centered. We don't crop
+ * it to a circle (the artwork is full-body, cropping cuts the face)
+ * — we render it square with a pink accent border + drop shadow so
+ * it reads as a "sticker" rather than a photo avatar. Size 36
+ * desktop / 32 narrow.
+ */
 const MascotAvatar: React.FC<{ small?: boolean }> = ({ small = false }) => {
-  const size = small ? 28 : 36;
+  const size = small ? 32 : 36;
   return (
-    <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}>
+    <View style={[styles.avatar, { width: size, height: size, borderRadius: 8 }]}>
       <Image
         source={require('../../../assets/illustrations/avatar.png')}
-        style={{ width: size, height: size, borderRadius: size / 2 }}
+        style={{ width: size, height: size, borderRadius: 8 }}
         resizeMode="cover"
       />
     </View>
@@ -439,7 +448,8 @@ const styles = StyleSheet.create({
 
   avatar: {
     marginRight: 6, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: neutral.surfaceMuted, overflow: 'hidden',
+    backgroundColor: '#FFE4EC', borderWidth: 1, borderColor: '#FFB6C1', borderRadius: 8,
+    shadowColor: '#FFB6C1', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3, elevation: 2,
   },
 
   bubble: {

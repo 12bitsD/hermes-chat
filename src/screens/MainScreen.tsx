@@ -483,8 +483,12 @@ const SessionDrawer: React.FC<DrawerProps> = ({
       >
         <View style={styles.drawerHeader}>
           <Text style={styles.drawerTitle}>Sessions</Text>
-          <Pressable hitSlop={8} onPress={onNew}>
-            <Text style={[styles.drawerAction, { color: accent.accent.fg }]}>+ New</Text>
+          <Pressable
+            hitSlop={8}
+            onPress={onNew}
+            style={({ pressed }) => [styles.newChatBtn, pressed ? styles.newChatBtnPressed : null]}
+          >
+            <Text style={styles.newChatPlus}>＋</Text>
           </Pressable>
         </View>
 
@@ -691,6 +695,13 @@ const styles = StyleSheet.create({
   dashCount: { ...type.uiBold, color: '#007AFF', fontFamily: 'Courier' },
   drawerTitle: { ...type.title, color: neutral.ink, fontSize: 16 },
   drawerAction: { ...type.caption, fontWeight: '600' },
+  newChatBtn: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: '#FFD1DC', borderWidth: 1, borderColor: '#007AFF',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  newChatBtnPressed: { backgroundColor: '#007AFF' },
+  newChatPlus: { fontSize: 18, color: '#007AFF', lineHeight: 18, fontWeight: '600', marginTop: -1 },
   drawerItem: { paddingHorizontal: space.md, paddingVertical: space.sm, marginVertical: 2, borderRadius: radius.sm },
   drawerItemActive: {},
   drawerItemPressed: { backgroundColor: neutral.surfaceMuted },
