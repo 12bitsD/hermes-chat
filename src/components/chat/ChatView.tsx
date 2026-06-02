@@ -5,6 +5,7 @@ import { neutral, type, space, radius, useTheme } from '../../theme';
 import { TextField, Button } from '../win95';
 import { MessageBubble } from './MessageBubble';
 import { EmptyState } from './EmptyState';
+import { ApprovalModal } from '../ApprovalModal';
 import { AttachZone, PickedFile, FileCard } from './FileCard';
 import { useAppStore } from '../../store/app';
 import { getLLMClient } from '../../store/persistence';
@@ -31,6 +32,14 @@ function guessKindFromName(name: string, mime: string): 'pdf' | 'ppt' | 'image' 
   return 'other';
 }
 
+/** Read the current tool events on a message directly from the store. */
+function getCurrentToolEvents(conversationId: string, messageId: string) {
+  const c = useAppStore.getState().conversations[conversationId];
+  if (!c) return [];
+  const m = c.messages.find((x) => x.id === messageId);
+  return m?.toolEvents ?? [];
+}
+
 export const ChatView: React.FC = () => {
   const insets = useSafeAreaInsets();
   const accent = useTheme();
@@ -42,6 +51,11 @@ export const ChatView: React.FC = () => {
   const systemPrompt = useAppStore((s) => s.settings.systemPrompt);
   const maxTokens = useAppStore((s) => s.settings.maxTokens);
   const sessionKey = useAppStore((s) => s.settings.sessionKey);
+  const useRunsMode = useAppStore((s) => (s.settings as any).useRunsMode ?? false);
+
+  const [pendingApproval, setPendingApproval] = useState<{
+    runId: string; approvalId: string; prompt: string; tool: string; args: unknown;
+  } | null>(null);
 
   const [input, setInput] = useState('');
   const [pendingFiles, setPendingFiles] = useState<PickedFile[]>([]);
@@ -139,6 +153,32 @@ export const ChatView: React.FC = () => {
     setPendingFiles((cur) => cur.filter((f) => f.uri !== uri));
   }, []);
 
+  /**
+   * Send a resolution back to the gateway when the user approves/denies.
+   * The agent run continues / stops accordingly. We do this async;
+   * no need to block the UI.
+   */
+  const resolveApproval = useCallback(async (decision: 'approve' | 'deny', note?: string) => {
+    if (!pendingApproval) return;
+    const { runId, approvalId } = pendingApproval;
+    setPendingApproval(null);
+    if (!useRunsMode) return;
+    const hermes = getHermesClient();
+    if (!hermes) return;
+    const { HermesRunsClient } = await import('../../services/llm');
+    const runs = new HermesRunsClient({
+      provider: 'hermes-gateway',
+      endpoint: (settings as any).llmEndpoint,
+      apiKey: (settings as any).llmApiKey,
+      defaultModel: (settings as any).llmModel,
+    });
+    await runs.resolveApproval(runId, approvalId, decision, note).catch(() => undefined);
+    if (decision === 'deny') {
+      await runs.stopRun(runId).catch(() => undefined);
+    }
+    haptic(decision === 'approve' ? 'success' : 'warning');
+  }, [pendingApproval, useRunsMode, settings.llmEndpoint, settings.llmApiKey, settings.llmModel]);
+
   const send = useCallback(async () => {
     const text = input.trim();
     if (!text || streaming || !conversationId) return;
@@ -205,49 +245,173 @@ export const ChatView: React.FC = () => {
       // user-configured session key for long-term memory scoping. Plain
       // OpenAI-compatible backends will just ignore these headers.
       const hermes = getHermesClient();
-      const streamCtx = hermes
-        ? { sessionId: conversationId, sessionKey }
-        : undefined;
-      await client.streamChat(
-        {
-          conversationId,
-          messages: historyMessages,
-          signal: ctrl.signal,
-          maxTokens,
-          temperature: settings.temperature,
-        },
-        {
-          onChunk: (chunk) => {
-            if (ctrl.signal.aborted) return; // ignore late chunks after stop
-            acc += chunk;
-            pendingAcc = acc;
-            // Update local state for the in-flight buffer used by error path
-            scheduleFlush();
-          },
-          onDone: () => {
-            if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-            if (!ctrl.signal.aborted) {
-              updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
+
+      // === Agent runs mode (POST /v1/runs) — tool events + approval flow
+      if (useRunsMode && hermes) {
+        const { HermesRunsClient } = await import('../../services/llm');
+        const runs = new HermesRunsClient({
+          provider: 'hermes-gateway',
+          endpoint: (settings as any).llmEndpoint,
+          apiKey: (settings as any).llmApiKey,
+          defaultModel: (settings as any).llmModel,
+        });
+        try {
+          const runId = await runs.startRun({
+            input: text,
+            instructions: systemPrompt && systemPrompt.trim() ? systemPrompt : undefined,
+            conversationHistory: historyMessages as any,
+            model: (settings as any).llmModel,
+            sessionId: conversationId,
+            sessionKey,
+            signal: ctrl.signal,
+          });
+          for await (const ev of runs.subscribeEvents(runId, ctrl.signal)) {
+            if (ctrl.signal.aborted) break;
+            if (ev.event === 'message.delta') {
+              acc += ev.delta;
+              pendingAcc = acc;
+              scheduleFlush();
+            } else if (ev.event === 'tool.started') {
+              const toolEv = {
+                id: `${runId}-${ev.timestamp}`,
+                tool: ev.tool,
+                status: 'running' as const,
+                startedAt: ev.timestamp * 1000,
+                preview: ev.preview,
+              };
+              updateMessage(conversationId, assistantMsg.id, {
+                toolEvents: [...getCurrentToolEvents(conversationId, assistantMsg.id), toolEv],
+              });
+            } else if (ev.event === 'tool.completed') {
+              const existing = getCurrentToolEvents(conversationId, assistantMsg.id);
+              const updated = existing.map((t) =>
+                t.tool === ev.tool && t.status === 'running'
+                  ? { ...t, status: ev.error ? ('error' as const) : ('done' as const), finishedAt: ev.timestamp * 1000, durationMs: ev.duration * 1000 }
+                  : t,
+              );
+              updateMessage(conversationId, assistantMsg.id, { toolEvents: updated });
+            } else if (ev.event === 'completed') {
+              if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+              const finalText = ev.final_response || acc;
+              updateMessage(conversationId, assistantMsg.id, { content: finalText, status: 'done' });
               haptic('success');
-            } else {
-              // user stopped — keep partial content, mark as done (not error)
+            } else if (ev.event === 'failed') {
+              if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+              updateMessage(conversationId, assistantMsg.id, {
+                content: acc + (acc ? '\n\n' : '') + `**Error**: ${ev.error.message}`,
+                status: 'error',
+              });
+              haptic('error');
+            } else if (ev.event === 'stopped') {
+              if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
               updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
+            } else if (ev.event === 'approval.required') {
+              // Surface the approval prompt as a modal
+              setPendingApproval({
+                runId, approvalId: ev.approval_id, prompt: ev.prompt, tool: ev.tool, args: ev.args,
+              });
+              updateMessage(conversationId, assistantMsg.id, { status: 'awaiting-approval' });
+            } else if (ev.event === 'reasoning.available') {
+              // Optional: stash as a toolEvents entry so user can see it
+              const existing = getCurrentToolEvents(conversationId, assistantMsg.id);
+              updateMessage(conversationId, assistantMsg.id, {
+                toolEvents: [
+                  ...existing,
+                  {
+                    id: `${runId}-reasoning-${ev.timestamp}`,
+                    tool: 'reasoning',
+                    status: 'done' as const,
+                    startedAt: ev.timestamp * 1000,
+                    finishedAt: ev.timestamp * 1000,
+                    preview: ev.text,
+                  },
+                ],
+              });
             }
+          }
+        } catch (e: any) {
+          if (ctrl.signal.aborted) return;
+          // Falls back to plain chat on any runs-mode failure so user is never locked out
+          console.warn('[runs mode] failed, falling back to chat completions', e);
+          await client.streamChat(
+            {
+              conversationId,
+              messages: historyMessages,
+              signal: ctrl.signal,
+              maxTokens,
+              temperature: settings.temperature,
+            },
+            {
+              onChunk: (chunk) => {
+                if (ctrl.signal.aborted) return;
+                acc += chunk;
+                pendingAcc = acc;
+                scheduleFlush();
+              },
+              onDone: () => {
+                if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+                updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
+                haptic('success');
+              },
+              onError: (err) => {
+                if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+                const msg = err?.message ?? String(err);
+                updateMessage(conversationId, assistantMsg.id, {
+                  content: acc + (acc ? '\n\n' : '') + `**Error**: ${msg}`,
+                  status: 'error',
+                });
+                haptic('error');
+              },
+            },
+            { sessionId: conversationId, sessionKey },
+          );
+        }
+      } else {
+        // === Default: OpenAI Chat Completions streaming ===
+        const streamCtx = hermes
+          ? { sessionId: conversationId, sessionKey }
+          : undefined;
+        await client.streamChat(
+          {
+            conversationId,
+            messages: historyMessages,
+            signal: ctrl.signal,
+            maxTokens,
+            temperature: settings.temperature,
           },
-          onError: (err) => {
-            if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-            if (ctrl.signal.aborted) return; // user-initiated stop, not a real error
-            const msg = err?.message ?? String(err);
-            setStreamError(msg);
-            updateMessage(conversationId, assistantMsg.id, {
-              content: acc + (acc ? '\n\n' : '') + `**Error**: ${msg}`,
-              status: 'error',
-            });
-            haptic('error');
+          {
+            onChunk: (chunk) => {
+              if (ctrl.signal.aborted) return; // ignore late chunks after stop
+              acc += chunk;
+              pendingAcc = acc;
+              // Update local state for the in-flight buffer used by error path
+              scheduleFlush();
+            },
+            onDone: () => {
+              if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+              if (!ctrl.signal.aborted) {
+                updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
+                haptic('success');
+              } else {
+                // user stopped — keep partial content, mark as done (not error)
+                updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
+              }
+            },
+            onError: (err) => {
+              if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+              if (ctrl.signal.aborted) return; // user-initiated stop, not a real error
+              const msg = err?.message ?? String(err);
+              setStreamError(msg);
+              updateMessage(conversationId, assistantMsg.id, {
+                content: acc + (acc ? '\n\n' : '') + `**Error**: ${msg}`,
+                status: 'error',
+              });
+              haptic('error');
+            },
           },
-        },
-        streamCtx,
-      );
+          streamCtx,
+        );
+      }
     } catch (e: any) {
       if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
       if (ctrl.signal.aborted) return; // stop path — no error UI
@@ -262,7 +426,7 @@ export const ChatView: React.FC = () => {
       setStreaming(false);
       abortRef.current = null;
     }
-  }, [input, streaming, conversationId, appendMessage, updateMessage, pendingFiles, systemPrompt, maxTokens, sessionKey, settings.temperature]);
+  }, [input, streaming, conversationId, appendMessage, updateMessage, pendingFiles, systemPrompt, maxTokens, sessionKey, settings.temperature, settings.llmEndpoint, settings.llmApiKey, settings.llmModel, useRunsMode]);
 
   const onKeyPress = useCallback(
     (e: any) => {
@@ -319,6 +483,7 @@ export const ChatView: React.FC = () => {
   const isMobile = isNarrow;
 
   return (
+    <>
     <KeyboardAvoidingView
       style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -415,6 +580,17 @@ export const ChatView: React.FC = () => {
         </View>
       </View>
     </KeyboardAvoidingView>
+
+    <ApprovalModal
+      open={!!pendingApproval}
+      runId={pendingApproval?.runId ?? null}
+      approvalId={pendingApproval?.approvalId ?? null}
+      prompt={pendingApproval?.prompt ?? ''}
+      tool={pendingApproval?.tool ?? ''}
+      args={pendingApproval?.args}
+      onResolve={resolveApproval}
+    />
+    </>
   );
 };
 

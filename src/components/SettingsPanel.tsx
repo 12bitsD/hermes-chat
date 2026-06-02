@@ -46,6 +46,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
   // Advanced
   const [maxTokens, setMaxTokens] = useState(String((settings as any).maxTokens ?? ''));
   const [sessionKey, setSessionKey] = useState((settings as any).sessionKey ?? '');
+  const [useRunsMode, setUseRunsMode] = useState((settings as any).useRunsMode ?? false);
 
   // Probe + models list
   const [probing, setProbing] = useState(false);
@@ -67,6 +68,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
     setAccentKey(settings.accent);
     setMaxTokens(String((settings as any).maxTokens ?? ''));
     setSessionKey((settings as any).sessionKey ?? '');
+    setUseRunsMode((settings as any).useRunsMode ?? false);
     setProbeResult(null);
     setModels([]);
   }, [open, settings]);
@@ -95,6 +97,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
       enableHaptics: haptics,
       maxTokens: maxTokens.trim() === '' ? undefined : Number(maxTokens),
       sessionKey: sessionKey.trim() || undefined,
+      useRunsMode,
     } as any);
     syncLLMFromSettings();
     try {
@@ -162,11 +165,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
       accent: accentKey,
       maxTokens: maxTokens.trim() === '' ? undefined : Number(maxTokens),
       sessionKey: sessionKey.trim() || undefined,
+      useRunsMode,
     } as any);
     syncLLMFromSettings();
     haptic('success');
     onClose();
-  }, [provider, endpoint, apiKey, model, systemPrompt, temperature, streamChunkMs, haptics, accentKey, maxTokens, sessionKey, updateSettings, onClose]);
+  }, [provider, endpoint, apiKey, model, systemPrompt, temperature, streamChunkMs, haptics, accentKey, maxTokens, sessionKey, useRunsMode, updateSettings, onClose]);
 
   const isCustom = provider === 'openai-compatible' || provider === 'hermes-gateway' || provider === 'ollama';
   const isHermes = provider === 'hermes-gateway';
@@ -283,6 +287,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
                 (we send your conversation id) and an optional <Text style={styles.code}>X-Hermes-Session-Key</Text>{' '}
                 header that scopes long-term memory. Leave blank to use stateless chat.
               </Text>
+              <View style={[styles.switchRow, { marginTop: 10 }]}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={styles.label}>Agent runs mode (POST /v1/runs)</Text>
+                  <Text style={styles.hint}>
+                    Stream structured tool events, allow interrupting long runs, and surface approval prompts.
+                    Slower than plain chat completions. Falls back automatically if the gateway doesn't support it.
+                  </Text>
+                </View>
+                <Switch
+                  value={useRunsMode}
+                  onValueChange={setUseRunsMode}
+                  trackColor={{ true: accent.accent.fg, false: neutral.border }}
+                  thumbColor={neutral.surface}
+                />
+              </View>
             </Section>
           ) : null}
 

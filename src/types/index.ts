@@ -1,6 +1,24 @@
 export type Role = 'user' | 'assistant' | 'system';
 
-export type MessageStatus = 'streaming' | 'done' | 'error';
+export type MessageStatus = 'streaming' | 'done' | 'error' | 'awaiting-approval';
+
+export interface ToolEvent {
+  /** Unique id so React can key events in the same message. */
+  id: string;
+  tool: string;
+  status: 'running' | 'done' | 'error';
+  startedAt: number;
+  finishedAt?: number;
+  preview?: string;
+  durationMs?: number;
+}
+
+export interface ApprovalRequest {
+  approvalId: string;
+  prompt: string;
+  tool: string;
+  args: unknown;
+}
 
 export interface Message {
   id: string;
@@ -9,6 +27,8 @@ export interface Message {
   status: MessageStatus;
   createdAt: number;
   attachments?: Attachment[];
+  toolEvents?: ToolEvent[];
+  approval?: ApprovalRequest;
 }
 
 export interface Attachment {
@@ -67,6 +87,13 @@ export interface AppSettings {
   maxTokens?: number;
   /** Hermes-only: scopes long-term memory via X-Hermes-Session-Key */
   sessionKey?: string;
+  /**
+   * Hermes-only: when true, ChatView talks to /v1/runs instead of
+   * /v1/chat/completions so the gateway can surface tool events and
+   * approval prompts. Falls back to the chat-completions path on any
+   * network error so the user is never locked out.
+   */
+  useRunsMode?: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {

@@ -41,5 +41,7 @@ export function getHermesClient(): HermesGatewayClient | null {
   return c instanceof HermesGatewayClient ? c : null;
 }
 
-export type { LLMClient, LLMStreamRequest, LLMStreamHandlers, ChatMessageInput } from './types';
+export type { LLMClient, LLMStreamRequest, LLMStreamHandlers, ChatMessageInput, LLMStreamContext } from './types';
 export type { LLMConfig } from './config';
+export { HermesRunsClient, type RunEvent, type RunRequest, type RunStreamCallbacks, callbacksFromStreamHandlers } from './runs-client';
+export { HermesGatewayClient, type HermesRequestContext } from './hermes-client';
