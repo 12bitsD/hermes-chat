@@ -87,11 +87,11 @@ const styles = StyleSheet.create({
     minWidth: 64,
   },
   small: {
-    paddingHorizontal: space.sm,
+    paddingHorizontal: space.md,
     paddingVertical: space.xs + 1,
-    minHeight: 28,
+    minHeight: 32,
     minWidth: 0,
   },
   label: { ...type.uiBold, fontSize: 13 },
-  labelSmall: { fontSize: 12 },
+  labelSmall: { fontSize: 13, fontWeight: '600' },
 });
