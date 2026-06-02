@@ -34,6 +34,17 @@ interface AppState {
   gatewayReachable: boolean | null;
   /** Optional override used by the background probe. */
   setGatewayReachable: (ok: boolean | null) => void;
+  /** Live snapshot of the Hermes backend — sessions, skills, toolsets, jobs. null = unknown. */
+  hermesSnapshot: HermesSnapshot | null;
+  setHermesSnapshot: (snap: HermesSnapshot | null) => void;
+}
+
+export interface HermesSnapshot {
+  sessions: { id: string; title?: string; messageCount?: number; updatedAt?: number }[];
+  skills:    { id: string; name: string; description?: string }[];
+  toolsets:  { id: string; name: string; description?: string }[];
+  jobs:      { id: string; title?: string; state?: string; nextRunAt?: number }[];
+  updatedAt: number;
 }
 
 const now = () => Date.now();
@@ -247,4 +258,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   gatewayReachable: null as boolean | null,
   setGatewayReachable: (ok: boolean | null) => set({ gatewayReachable: ok }),
+
+  hermesSnapshot: null as HermesSnapshot | null,
+  setHermesSnapshot: (snap: HermesSnapshot | null) => set({ hermesSnapshot: snap }),
 }));

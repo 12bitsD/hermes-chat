@@ -11,10 +11,14 @@ import { SettingsPanel } from '../components/SettingsPanel';
 import { SakuraRain } from '../components/SakuraRain';
 import { useAppStore } from '../store/app';
 import { getLLMClient } from '../store/persistence';
+import { useHermesSnapshot } from '../store/useHermesSnapshot';
 import { isNarrow, isNative, watchScreen } from '../utils/platform';
 import { haptic } from '../utils/haptic';
 
 export const MainScreen: React.FC = () => {
+  // Keep a live snapshot of the Hermes backend in the store
+  useHermesSnapshot();
+
   const insets = useSafeAreaInsets();
   const accent = useTheme();
   const conversations = useAppStore((s) => s.conversations);
@@ -38,6 +42,7 @@ export const MainScreen: React.FC = () => {
   // Periodic provider reachability probe so the status dot stays honest
   const settings = useAppStore((s) => s.settings);
   const providerOk = useAppStore((s) => s.gatewayReachable);
+  const hermesSnapshot = useAppStore((s) => s.hermesSnapshot);
   const setProviderOk = useAppStore((s) => s.setGatewayReachable);
   useEffect(() => {
     let cancelled = false;
@@ -178,9 +183,19 @@ export const MainScreen: React.FC = () => {
             <Text style={[styles.statusText, { marginLeft: 8, color: accent.accent.fg }]}>⚡ runs-mode</Text>
           ) : null}
         </View>
-        <Text style={styles.statusText}>
-          📱 {Object.keys(conversations).length} sessions ♡
-        </Text>
+        <View style={styles.statusRight}>
+          {hermesSnapshot ? (
+            <View style={styles.snapChips}>
+              <Text style={styles.snapChip} numberOfLines={1}>💬 {hermesSnapshot.sessions.length}</Text>
+              <Text style={styles.snapChip} numberOfLines={1}>✨ {hermesSnapshot.skills.length}</Text>
+              <Text style={styles.snapChip} numberOfLines={1}>🛠 {hermesSnapshot.toolsets.length}</Text>
+              <Text style={styles.snapChip} numberOfLines={1}>📋 {hermesSnapshot.jobs.length}</Text>
+            </View>
+          ) : null}
+          <Text style={styles.statusText}>
+            📱 {Object.keys(conversations).length} ♡
+          </Text>
+        </View>
       </View>
 
       {/* ── Settings ────────────────────────────────────────────────── */}
@@ -476,6 +491,9 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   statusLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 },
+  statusRight: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+  snapChips: { flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: 4 },
+  snapChip: { ...type.caption, color: neutral.inkMuted, fontSize: 10, fontFamily: 'Courier' },
   statusBarDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
   statusText: { ...type.caption, color: neutral.inkSoft, fontSize: 11 },
 });
