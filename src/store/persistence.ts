@@ -1,22 +1,60 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAppStore } from './app';
-import { configureLLM, getLLMClient } from '../services/llm';
-import { defaultEndpoint } from '../services/llm/config';
-
-const STORAGE_KEY = 'hermes-chat:state:v1';
-const SAVE_DEBOUNCE_MS = 400;
-
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-let lastSnapshot: string = '';
-let bootStrapDone = false;
-
 /**
  * Persist zustand store to AsyncStorage. Schema is JSON, debounced 400ms
  * so a flurry of streaming-message updates doesn't thrash the disk.
  *
  * Also reconciles the LLM client with the persisted provider/endpoint so the
  * very first message after launch goes to the right backend.
+ *
+ * On first launch (provider is still the default mock AND the user has
+ * never made their own settings choice), kicks off a background
+ * `autoDetectLLM()` sweep against a small list of well-known LLM endpoints
+ * (Hermes gateway 8642, Ollama 11434, plus 10.0.2.2 for Android emulator).
+ * If a real endpoint responds, silently flip the user to it. After the
+ * user has touched settings we set a flag in AsyncStorage so the
+ * auto-detector doesn't second-guess them.
  */
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAppStore } from './app';
+import { configureLLM, getLLMClient } from '../services/llm';
+import { autoDetectLLM } from '../services/llm/auto-detect';
+import { defaultEndpoint } from '../services/llm/config';
+
+const STORAGE_KEY = 'hermes-chat:state:v1';
+const CUSTOMIZED_KEY = 'hermes-chat:settings-customized';
+const SAVE_DEBOUNCE_MS = 400;
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let lastSnapshot: string = '';
+let bootStrapDone = false;
+
+/** Pull the latest settings out of the store and reconfigure the LLM client. */
+export function syncLLMFromSettings() {
+  const s = useAppStore.getState().settings;
+  configureLLM({
+    provider: s.llmProvider,
+    endpoint: s.llmEndpoint || defaultEndpoint(),
+    apiKey: s.llmApiKey || undefined,
+    defaultModel: s.llmModel || 'default',
+  });
+}
+
+/** Touch a setting — re-syncs the LLM client so changes take effect immediately. */
+export function updateSetting<K extends keyof ReturnType<typeof useAppStore.getState>['settings']>(
+  key: K,
+  value: ReturnType<typeof useAppStore.getState>['settings'][K],
+) {
+  useAppStore.getState().updateSettings({ [key]: value } as any);
+  // Mark settings as user-customized so auto-detect won't fire on next launch
+  AsyncStorage.setItem(CUSTOMIZED_KEY, '1').catch(() => undefined);
+  syncLLMFromSettings();
+}
+
+export function clearPersistence() {
+  lastSnapshot = '';
+  return AsyncStorage.removeItem(STORAGE_KEY);
+}
+
 export function initPersistence() {
   if (bootStrapDone) return;
   bootStrapDone = true;
@@ -25,8 +63,10 @@ export function initPersistence() {
   AsyncStorage.getItem(STORAGE_KEY)
     .then((raw) => {
       if (!raw) {
-        // First launch — just push defaults into the LLM client
+        // First launch — push defaults into the LLM client
         syncLLMFromSettings();
+        // and run a background auto-detect (only on first launch)
+        runAutoDetectIfNeeded();
         return;
       }
       try {
@@ -60,29 +100,29 @@ export function initPersistence() {
   });
 }
 
-/** Pull the latest settings out of the store and reconfigure the LLM client. */
-export function syncLLMFromSettings() {
-  const s = useAppStore.getState().settings;
-  configureLLM({
-    provider: s.llmProvider,
-    endpoint: s.llmEndpoint || defaultEndpoint(),
-    apiKey: s.llmApiKey || undefined,
-    defaultModel: s.llmModel || 'default',
+/**
+ * Auto-detect a local LLM endpoint. Only runs when:
+ *   - the user is on the default mock provider AND
+ *   - the user has not previously customized settings
+ * If found, silently upgrade the active provider/endpoint and persist.
+ * If not found, leaves the user on mock (their default).
+ */
+async function runAutoDetectIfNeeded() {
+  try {
+    const customized = await AsyncStorage.getItem(CUSTOMIZED_KEY);
+    if (customized) return; // user has made their own choice before
+  } catch { /* ignore */ }
+
+  const result = await autoDetectLLM();
+  if (!result.found || !result.provider || !result.endpoint) return;
+
+  // Flip the active provider
+  useAppStore.getState().updateSettings({
+    llmProvider: result.provider as any,
+    llmEndpoint: result.endpoint,
   });
-}
-
-/** Touch a setting — re-syncs the LLM client so changes take effect immediately. */
-export function updateSetting<K extends keyof ReturnType<typeof useAppStore.getState>['settings']>(
-  key: K,
-  value: ReturnType<typeof useAppStore.getState>['settings'][K],
-) {
-  useAppStore.getState().updateSettings({ [key]: value } as any);
   syncLLMFromSettings();
-}
-
-export function clearPersistence() {
-  lastSnapshot = '';
-  return AsyncStorage.removeItem(STORAGE_KEY);
+  console.log('[persistence] auto-detected LLM:', result.provider, result.endpoint);
 }
 
 export { getLLMClient };
