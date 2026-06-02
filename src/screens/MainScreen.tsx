@@ -97,7 +97,7 @@ export const MainScreen: React.FC = () => {
               <Text style={[styles.appBarSparkle, { color: accent.accent.fg }]}>✦</Text>
             </View>
             <Text numberOfLines={1} style={styles.appBarSubtitle}>
-              {`${Object.keys(conversations).length} sessions ♡`}
+              📱 {`${Object.keys(conversations).length} sessions ♡`}
             </Text>
           </Pressable>
         )}
@@ -179,7 +179,7 @@ export const MainScreen: React.FC = () => {
           ) : null}
         </View>
         <Text style={styles.statusText}>
-          {Object.keys(conversations).length} sessions ♡
+          📱 {Object.keys(conversations).length} sessions ♡
         </Text>
       </View>
 
