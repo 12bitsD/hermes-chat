@@ -8,6 +8,7 @@ import { EmptyState } from './EmptyState';
 import { ApprovalModal } from '../ApprovalModal';
 import { AttachZone, PickedFile, FileCard } from './FileCard';
 import { useAppStore } from '../../store/app';
+import { Animated, Easing } from 'react-native';
 import { getLLMClient } from '../../store/persistence';
 import type { LLMClient } from '../../services/llm';
 import { makeUserMessage, makeAssistantMessage } from '../../services/mock-llm';
@@ -53,7 +54,16 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
   const systemPrompt = useAppStore((s) => s.settings.systemPrompt);
   const maxTokens = useAppStore((s) => s.settings.maxTokens);
   const sessionKey = useAppStore((s) => s.settings.sessionKey);
-  const useRunsMode = useAppStore((s) => (s.settings as any).useRunsMode ?? false);
+  // Agent Native: /v1/runs is the default protocol. The user no
+  // longer toggles between runs / chat-completions; if the gateway
+  // doesn't expose /v1/runs, the catch path falls back to /v1/chat/
+  // completions automatically. (Hermes' own api_server ships both,
+  // so the fallback is mostly for dev-time pointing at a generic
+  // OpenAI-compatible server.)
+  const hermesEndpoint = (settings as any).llmEndpoint || 'http://127.0.0.1:8642/v1/chat/completions';
+  const hermesApiKey = (settings as any).llmApiKey;
+  const hermesModel = (settings as any).llmModel || 'default';
+  const useRunsMode = true;
 
   const [pendingApproval, setPendingApproval] = useState<{
     runId: string; approvalId: string; prompt: string; tool: string; args: unknown;
@@ -63,6 +73,9 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
   // can reach it without threading through state. Stays empty outside
   // an active /v1/runs run.
   const activeRunIdRef = useRef<string | null>(null);
+  // Mirror of run start time so the RunHeader can show a live timer
+  // without the header itself re-rendering on every state change.
+  const activeRunStartedAtRef = useRef<number | null>(null);
 
   const [input, setInput] = useState('');
   const [pendingFiles, setPendingFiles] = useState<PickedFile[]>([]);
@@ -305,27 +318,30 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
       // OpenAI-compatible backends will just ignore these headers.
       const hermes = getHermesClient();
 
-      // === Agent runs mode (POST /v1/runs) — tool events + approval flow
-      if (useRunsMode && hermes) {
-        const { HermesRunsClient } = await import('../../services/llm');
-        const runs = new HermesRunsClient({
-          provider: 'hermes-gateway',
-          endpoint: (settings as any).llmEndpoint,
-          apiKey: (settings as any).llmApiKey,
-          defaultModel: (settings as any).llmModel,
-        });
-        try {
-          const runId = await runs.startRun({
+      // === Agent runs mode (POST /v1/runs) — the default protocol
+      //     for any Hermes gateway. If /v1/runs isn't reachable the
+      //     catch block falls back to /v1/chat/completions so dev-time
+      //     pointing at a generic OpenAI-compatible server still works.
+      const { HermesRunsClient } = await import('../../services/llm');
+      const runs = new HermesRunsClient({
+        provider: 'hermes-gateway',
+        endpoint: hermesEndpoint,
+        apiKey: hermesApiKey,
+        defaultModel: hermesModel,
+      });
+      try {
+        const runId = await runs.startRun({
             input: text,
             instructions: systemPrompt && systemPrompt.trim() ? systemPrompt : undefined,
             conversationHistory: historyMessages as any,
-            model: (settings as any).llmModel,
+            model: hermesModel,
             sessionId: conversationId,
             sessionKey,
             signal: ctrl.signal,
           });
-          activeRunIdRef.current = runId;
-          for await (const ev of runs.subscribeEvents(runId, ctrl.signal)) {
+        activeRunIdRef.current = runId;
+        activeRunStartedAtRef.current = Date.now();
+        for await (const ev of runs.subscribeEvents(runId, ctrl.signal)) {
             if (ctrl.signal.aborted) break;
             if (ev.event === 'message.delta') {
               acc += ev.delta;
@@ -426,70 +442,6 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
             { sessionId: conversationId, sessionKey },
           );
         }
-      } else {
-        // === Default: OpenAI Chat Completions streaming ===
-        const streamCtx = hermes
-          ? { sessionId: conversationId, sessionKey }
-          : undefined;
-        await client.streamChat(
-          {
-            conversationId,
-            messages: historyMessages,
-            signal: ctrl.signal,
-            maxTokens,
-            temperature: settings.temperature,
-          },
-          {
-            onChunk: (chunk) => {
-              if (ctrl.signal.aborted) return; // ignore late chunks after stop
-              acc += chunk;
-              pendingAcc = acc;
-              // Update local state for the in-flight buffer used by error path
-              scheduleFlush();
-            },
-            onDone: () => {
-              if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-              if (!ctrl.signal.aborted) {
-                updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
-                haptic('success');
-              } else {
-                // user stopped — keep partial content, mark as done (not error)
-                updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
-              }
-              // Mirror both new messages into the Hermes SessionDB so
-              // the computer (and any other device sharing this
-              // session id) sees the turn. Fire-and-forget — failure
-              // is not surfaced to the user; their conversation still
-              // works on the phone even if the gateway is offline.
-              if (settings.llmProvider === 'hermes-gateway') {
-                const { HermesSessionsClient } = require('../../services/llm') as typeof import('../../services/llm');
-                const client = new HermesSessionsClient({
-                  provider: 'hermes-gateway',
-                  endpoint: settings.llmEndpoint || 'http://127.0.0.1:8642/v1/chat/completions',
-                  apiKey: settings.llmApiKey || undefined,
-                  defaultModel: settings.llmModel || 'default',
-                });
-                // user message
-                client.addMessage(conversationId, 'user', text).catch(() => undefined);
-                // assistant reply (full)
-                client.addMessage(conversationId, 'assistant', acc).catch(() => undefined);
-              }
-            },
-            onError: (err) => {
-              if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-              if (ctrl.signal.aborted) return; // user-initiated stop, not a real error
-              const msg = err?.message ?? String(err);
-              setStreamError(msg);
-              updateMessage(conversationId, assistantMsg.id, {
-                content: acc + (acc ? '\n\n' : '') + `**Error**: ${msg}`,
-                status: 'error',
-              });
-              haptic('error');
-            },
-          },
-          streamCtx,
-        );
-      }
     } catch (e: any) {
       if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
       if (ctrl.signal.aborted) return; // stop path — no error UI
@@ -504,6 +456,7 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
       setStreaming(false);
       abortRef.current = null;
       activeRunIdRef.current = null;
+      activeRunStartedAtRef.current = null;
     }
   }, [input, streaming, conversationId, appendMessage, updateMessage, pendingFiles, systemPrompt, maxTokens, sessionKey, settings.temperature, settings.llmEndpoint, settings.llmApiKey, settings.llmModel, useRunsMode]);
 
@@ -586,6 +539,12 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
     >
       {/* Message canvas */}
       <View style={styles.canvas}>
+        <RunHeader
+          streaming={streaming}
+          pendingApproval={pendingApproval}
+          runStartedAtRef={activeRunStartedAtRef}
+          onStop={onStop}
+        />
         <ScrollView
           ref={scrollRef}
           style={styles.scroll}
@@ -716,6 +675,88 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
     </>
   );
 };
+
+/**
+ * RunHeader — the agent-native equivalent of a "typing…" indicator.
+ * When a /v1/runs run is active, a slim bar floats above the
+ * message list showing:
+ *
+ *   ⚡ running · 0:13          ■ Stop
+ *   🔑 awaiting your approval   Review
+ *   ✦ reasoning…                ■ Stop
+ *
+ * The header reads the startedAt ref so its 1-Hz timer doesn't
+ * re-render the parent on every tick — the parent only re-renders
+ * when the run state actually changes.
+ */
+const RunHeader: React.FC<{
+  streaming: boolean;
+  pendingApproval: any;
+  runStartedAtRef: React.MutableRefObject<number | null>;
+  onStop: () => void;
+}> = ({ streaming, pendingApproval, runStartedAtRef, onStop }) => {
+  const accent = useTheme();
+  const [, force] = useState(0);
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  // Tick the live timer once a second while a run is active.
+  useEffect(() => {
+    if (!streaming) return;
+    const t = setInterval(() => force((n) => n + 1), 1000);
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 800, useNativeDriver: true, easing: Easing.inOut(Easing.sin) }),
+        Animated.timing(pulse, { toValue: 0, duration: 800, useNativeDriver: true, easing: Easing.inOut(Easing.sin) }),
+      ]),
+    );
+    loop.start();
+    return () => { clearInterval(t); loop.stop(); };
+  }, [streaming, pulse]);
+
+  if (!streaming && !pendingApproval) return null;
+
+  const isApproval = !!pendingApproval;
+  const startedAt = runStartedAtRef.current;
+  const elapsed = startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
+  const mm = Math.floor(elapsed / 60);
+  const ss = elapsed % 60;
+  const elapsedStr = mm > 0 ? `${mm}:${ss.toString().padStart(2, '0')}` : `0:${ss.toString().padStart(2, '0')}`;
+
+  const bg = isApproval
+    ? { backgroundColor: '#FBBF24' }  // amber = needs user attention
+    : { backgroundColor: accent.accent.soft, borderColor: accent.accent.fg, borderWidth: 1 };
+
+  const fg = isApproval
+    ? { color: '#000' }
+    : { color: accent.accent.fg };
+
+  const label = isApproval ? '🔑 awaiting your approval' : '⚡ Hermes is running';
+  const dotOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
+
+  return (
+    <View style={[runStyles.bar, bg]}>
+      <Animated.View style={[runStyles.dot, { opacity: dotOpacity }]} />
+      <Text style={[runStyles.label, fg]} numberOfLines={1}>{label}</Text>
+      {!isApproval ? <Text style={[runStyles.elapsed, fg]}>{elapsedStr}</Text> : null}
+      <Pressable onPress={onStop} hitSlop={8} style={runStyles.stopBtn}>
+        <Text style={[runStyles.stopText, fg]}>■ Stop</Text>
+      </Pressable>
+    </View>
+  );
+};
+
+const runStyles = StyleSheet.create({
+  bar: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 8, marginHorizontal: 8, marginTop: 4, marginBottom: 2,
+  },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FBBF24' },
+  label: { ...type.caption, fontSize: 12, fontWeight: '600', flex: 1 },
+  elapsed: { ...type.caption, fontSize: 11, fontFamily: 'Courier' },
+  stopBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: '#00000022' },
+  stopText: { ...type.caption, fontSize: 11, fontWeight: '700' },
+});
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
