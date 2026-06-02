@@ -9,6 +9,7 @@ import { Button } from './win95';
 import { useAppStore } from '../store/app';
 import { syncLLMFromSettings, getLLMClient } from '../store/persistence';
 import { defaultEndpoint } from '../services/llm/config';
+import { themes } from '../theme/themes';
 import { haptic } from '../utils/haptic';
 
 export interface SettingsPanelProps {
@@ -30,6 +31,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
   const [temperature, setTemperature] = useState(String(settings.temperature ?? ''));
   const [streamChunkMs, setStreamChunkMs] = useState(String(settings.streamChunkMs));
   const [haptics, setHaptics] = useState(settings.enableHaptics);
+  const [theme, setTheme] = useState(settings.theme);
 
   // Probe state
   const [probing, setProbing] = useState(false);
@@ -46,6 +48,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
     setTemperature(String(settings.temperature ?? ''));
     setStreamChunkMs(String(settings.streamChunkMs));
     setHaptics(settings.enableHaptics);
+    setTheme(settings.theme);
     setProbeResult(null);
   }, [open, settings]);
 
@@ -89,11 +92,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
       temperature: temperature.trim() === '' ? undefined : Number(temperature),
       streamChunkMs: Math.max(0, Number(streamChunkMs) || 0),
       enableHaptics: haptics,
+      theme,
     });
     syncLLMFromSettings();
     haptic('success');
     onClose();
-  }, [provider, endpoint, apiKey, model, systemPrompt, temperature, streamChunkMs, haptics, updateSettings, onClose]);
+  }, [provider, endpoint, apiKey, model, systemPrompt, temperature, streamChunkMs, haptics, theme, updateSettings, onClose]);
 
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
@@ -197,6 +201,32 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
               ) : null}
             </Section>
           ) : null}
+
+          <Section title="Appearance">
+            <Text style={styles.label}>Theme</Text>
+            <View style={styles.themeGrid}>
+              {(['win95', 'win98', 'system7', 'sakura'] as const).map((id) => {
+                const t = themes[id];
+                const active = theme === id;
+                return (
+                  <Pressable
+                    key={id}
+                    onPress={() => { haptic('light'); setTheme(id); }}
+                    style={[
+                      styles.themeCard,
+                      active ? styles.themeCardActive : null,
+                    ]}
+                  >
+                    <View style={[styles.themeSwatch, { backgroundColor: t.palette.desktop }]} />
+                    <Text style={[styles.themeName, active ? styles.themeNameActive : null]}>
+                      {t.displayName}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.hint}>The sakura theme is for the true believers 🌸</Text>
+          </Section>
         </ScrollView>
 
         <View style={[styles.footer, { paddingHorizontal: 12 }]}>
@@ -291,6 +321,22 @@ const styles = StyleSheet.create({
   segmentedTextActive: { color: palette.titlebarActiveText, fontWeight: 'bold' },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
   probeText: { ...type.ui, marginTop: 6, fontStyle: 'italic' },
+  themeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  themeCard: {
+    width: '48%', padding: 8,
+    backgroundColor: palette.surface,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderTopWidth: 1, borderLeftWidth: 1, borderTopColor: palette.bevelHi, borderLeftColor: palette.bevelHi,
+    borderRightWidth: 1, borderBottomWidth: 1, borderRightColor: palette.bevelLo, borderBottomColor: palette.bevelLo,
+  },
+  themeCardActive: {
+    borderTopColor: palette.bevelLo, borderLeftColor: palette.bevelLo,
+    borderRightColor: palette.bevelHi, borderBottomColor: palette.bevelHi,
+    backgroundColor: palette.surfaceAlt,
+  },
+  themeSwatch: { width: 28, height: 28, borderRadius: 0, borderWidth: 1, borderColor: '#00000040' },
+  themeName: { ...type.ui, color: palette.ink, flex: 1 },
+  themeNameActive: { fontWeight: 'bold' },
   footer: {
     flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 8,
     paddingVertical: 8, borderTopWidth: 1, borderTopColor: palette.bevelDark, backgroundColor: palette.surface,
