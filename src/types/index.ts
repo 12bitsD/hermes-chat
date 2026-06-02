@@ -60,7 +60,7 @@ export interface PromptTemplate {
   createdAt: number;
 }
 
-export type LLMProvider = 'mock' | 'hermes-gateway';
+export type LLMProvider = 'hermes-gateway' | 'mock' | 'openai-compatible' | 'ollama';
 export type Accent = 'mono' | 'ocean' | 'sakura' | 'forest';
 
 export interface AppSettings {
@@ -71,7 +71,7 @@ export interface AppSettings {
   fontSize: number;
   streamChunkMs: number;
   enableHaptics: boolean;
-  /** LLM provider selection */
+  /** LLM provider selection — default Hermes gateway, fallback presets available */
   llmProvider: LLMProvider;
   /** Hermes gateway endpoint (OpenAI-compatible chat completions) */
   llmEndpoint: string;
@@ -103,8 +103,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fontSize: 13,
   streamChunkMs: 25,
   enableHaptics: true,
-  llmProvider: 'mock',
-  llmEndpoint: '',
+  llmProvider: 'hermes-gateway',
+  llmEndpoint: 'http://127.0.0.1:8642/v1/chat/completions',
   llmApiKey: '',
   llmModel: 'default',
   systemPrompt: 'You are Hermes, a witty, helpful, anime-obsessed assistant. Keep responses concise unless asked to elaborate. Use markdown.',

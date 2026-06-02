@@ -255,7 +255,7 @@ const DesktopLayout: React.FC<{ onOpenSettings: () => void }> = ({ onOpenSetting
   );
 };
 
-function statusDotColor(provider: 'mock' | 'hermes-gateway', ok: boolean | null) {
+function statusDotColor(provider: 'hermes-gateway' | 'mock' | 'openai-compatible' | 'ollama', ok: boolean | null) {
   if (provider === 'mock') return { backgroundColor: neutral.inkMuted };
   if (ok === null) return { backgroundColor: neutral.inkMuted };
   return ok ? { backgroundColor: neutral.ok } : { backgroundColor: neutral.err };

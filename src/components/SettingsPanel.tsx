@@ -17,7 +17,9 @@ export interface SettingsPanelProps {
   onClose: () => void;
 }
 
-const PRESET_ORDER: ProviderId[] = ['mock', 'hermes-gateway', 'openai-compatible', 'ollama'];
+// Order matters: hermes-gateway first because that's the primary use case
+// for this app. Dev fallbacks follow.
+const PRESET_ORDER: ProviderId[] = ['hermes-gateway', 'mock', 'openai-compatible', 'ollama'];
 
 const PRESET_EMOJI: Record<ProviderId, string> = {
   mock: '🧪',
@@ -191,7 +193,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
 
           {/* ── Provider presets ──────────────────────────────────────── */}
-          <Section title="LLM Provider">
+          <Section title="Hermes agent">
+            <View style={[styles.heroBanner, { backgroundColor: accent.accent.soft, borderColor: accent.accent.fg }]}>
+              <Text style={[styles.heroBannerText, { color: neutral.ink }]}>
+                🌸 Hermes Chat is the mobile/desktop client for your <Text style={{ fontWeight: '700' }}>Hermes agent</Text>.
+              </Text>
+              <Text style={[styles.heroBannerText, { color: neutral.inkSoft, fontSize: 11 }]}>
+                Point it at the local gateway on port <Text style={styles.code}>8642</Text> and your conversations,
+                sessions, runs, and approvals all flow through.
+              </Text>
+            </View>
             <View style={styles.presetGrid}>
               {PRESET_ORDER.map((p) => {
                 const meta = PRESETS[p];
@@ -455,6 +466,11 @@ const styles = StyleSheet.create({
   },
   hint: { ...type.caption, color: neutral.inkMuted, fontStyle: 'italic', marginTop: 4 },
   code: { fontFamily: 'Courier', color: neutral.ink, fontSize: 10 },
+  heroBanner: {
+    padding: space.sm, borderRadius: radius.md,
+    borderWidth: 1, marginBottom: space.sm, gap: 2,
+  },
+  heroBannerText: { ...type.body, fontSize: 12, lineHeight: 16 },
   presetGrid: { gap: space.xs },
   presetCard: {
     flexDirection: 'row', alignItems: 'center', gap: space.sm,

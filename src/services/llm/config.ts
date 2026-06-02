@@ -1,54 +1,38 @@
 /**
  * LLM endpoint configuration.
  *
- * Hermes gateway (api_server platform) is documented at
- *   /Users/bytedance/Desktop/hermes-agent/gateway/platforms/api_server.py
+ * This client is built specifically for the **Hermes agent gateway**
+ * (the `api_server` platform on port 8642, see hermes-agent/gateway/
+ * platforms/api_server.py). The default endpoint, session-id forwarding,
+ * and capability discovery all assume that gateway.
  *
- * It exposes an OpenAI-compatible HTTP API on port 8642 by default, with
- * additional Hermes-native endpoints for sessions, runs, approvals, and
- * streaming events. Any OpenAI-compatible frontend (Open WebUI, LobeChat,
- * NextChat, etc.) can talk to it.
- *
- * We surface three named presets so a user (or a programmer editing this
- * file) can flip between them quickly. The defaults below assume the user
- * is running the Hermes gateway on the same machine.
+ * "OpenAI-compatible" / "Ollama" presets are kept as opt-in dev
+ * fallbacks so a developer can point the app at a generic endpoint
+ * while building — but they're not the intended use. The product
+ * positioning is: this is Hermes's mobile/desktop chat client, not a
+ * generic chatbot.
  */
 
 import { Platform } from 'react-native';
 
-export type ProviderId = 'mock' | 'hermes-gateway' | 'openai-compatible' | 'ollama';
+export type ProviderId = 'hermes-gateway' | 'openai-compatible' | 'ollama' | 'mock';
 
 export interface EndpointPreset {
   id: ProviderId;
   displayName: string;
   description: string;
-  /** The default base URL for this preset (you can still override per-conversation). */
   baseUrl: string;
-  /** A key the user can paste to authenticate. Most local gateways don't require one. */
   defaultApiKey: string;
-  /** A model id to seed into settings when this preset is picked. */
   defaultModel: string;
-  /** Show the "session id" toggle in the settings? Only meaningful for Hermes backend. */
   sessionAware: boolean;
-  /** Show the "enable runs/approvals" toggle? Hermes-only advanced feature. */
   runsAware: boolean;
 }
 
 export const PRESETS: Record<ProviderId, EndpointPreset> = {
-  mock: {
-    id: 'mock',
-    displayName: 'Mock (offline)',
-    description: 'In-process fake responses. No network needed — great for design work.',
-    baseUrl: '',
-    defaultApiKey: '',
-    defaultModel: 'default',
-    sessionAware: false,
-    runsAware: false,
-  },
   'hermes-gateway': {
     id: 'hermes-gateway',
     displayName: 'Hermes gateway',
-    description: 'Local Hermes agent (api_server platform on 8642). Streams SSE. OpenAI-compatible.',
+    description: 'The local Hermes agent (api_server on 8642). Streams SSE. Session-aware. Agent runs + approvals.',
     baseUrl: 'http://127.0.0.1:8642/v1/chat/completions',
     defaultApiKey: '',
     defaultModel: 'default',
@@ -57,8 +41,8 @@ export const PRESETS: Record<ProviderId, EndpointPreset> = {
   },
   'openai-compatible': {
     id: 'openai-compatible',
-    displayName: 'OpenAI-compatible',
-    description: 'Any service speaking OpenAI Chat Completions: Open WebUI, LiteLLM, Together, etc.',
+    displayName: 'OpenAI-compatible (dev fallback)',
+    description: 'Any service speaking OpenAI Chat Completions. Generic — picks up no Hermes features (no sessions, no runs).',
     baseUrl: 'https://api.openai.com/v1/chat/completions',
     defaultApiKey: '',
     defaultModel: 'gpt-4o-mini',
@@ -67,22 +51,27 @@ export const PRESETS: Record<ProviderId, EndpointPreset> = {
   },
   ollama: {
     id: 'ollama',
-    displayName: 'Ollama (local)',
-    description: 'Ollama running on localhost:11434. Model id matches a pulled model (llama3.1, qwen2.5, …).',
+    displayName: 'Ollama (dev fallback)',
+    description: 'Ollama running on localhost:11434. No Hermes features.',
     baseUrl: 'http://127.0.0.1:11434/v1/chat/completions',
     defaultApiKey: '',
     defaultModel: 'llama3.1',
     sessionAware: false,
     runsAware: false,
   },
+  mock: {
+    id: 'mock',
+    displayName: 'Mock (offline)',
+    description: 'In-process fake responses. No network needed.',
+    baseUrl: '',
+    defaultApiKey: '',
+    defaultModel: 'default',
+    sessionAware: false,
+    runsAware: false,
+  },
 };
 
-/**
- * Best-effort default endpoint for the current platform. Each preset's
- * baseUrl already encodes a sensible localhost — this just nudges Android
- * emulator users to 10.0.2.2 (host loopback) so the first connection
- * works without configuration.
- */
+/** Best-effort default endpoint for the current platform. */
 export function defaultEndpoint(preset: ProviderId = 'hermes-gateway'): string {
   if (preset === 'mock') return '';
   if (Platform.OS === 'android') {
@@ -94,22 +83,23 @@ export function defaultEndpoint(preset: ProviderId = 'hermes-gateway'): string {
 }
 
 export interface LLMConfig {
-  /** "mock" or "hermes-gateway" */
-  provider: 'mock' | 'hermes-gateway';
-  /** Full URL to the chat completions endpoint, e.g. http://127.0.0.1:8642/v1/chat/completions */
+  /** "hermes-gateway" (default) or one of the dev fallbacks. */
+  provider: ProviderId;
+  /** Full URL to the chat completions endpoint. */
   endpoint: string;
-  /** Bearer token (optional, many local gateways skip auth) */
+  /** Bearer token (optional, local Hermes gateway typically has none). */
   apiKey?: string;
-  /** Default model id to send; "default" usually maps to whatever the gateway has configured */
+  /** Default model id; "default" lets the gateway route. */
   defaultModel: string;
 }
 
 /**
- * @deprecated Use PRESETS[id] instead. Kept for back-compat with older
- * persisted settings and existing call-sites.
+ * Default app config used by the LLM client. The default endpoint is the
+ * Hermes gateway on 8642, which is also what the auto-detector probes
+ * first on first launch.
  */
 export const DEFAULT_CONFIG: LLMConfig = {
-  provider: 'mock',
+  provider: 'hermes-gateway',
   endpoint: defaultEndpoint('hermes-gateway'),
   apiKey: '',
   defaultModel: 'default',
