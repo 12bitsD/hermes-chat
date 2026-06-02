@@ -448,10 +448,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 18,
   },
-  bubbleUser: { borderBottomRightRadius: 4 },
+  bubbleUser: { borderBottomRightRadius: 4, shadowColor: '#FFB6C1', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 2 },
   bubbleAssistant: {
     backgroundColor: neutral.surface,
     borderWidth: 1, borderBottomLeftRadius: 4,
+    shadowColor: '#00000020', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 2, elevation: 1,
   },
 
   attachments: { marginBottom: 6 },
