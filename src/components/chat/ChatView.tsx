@@ -612,11 +612,7 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
         ) : null}
         <View style={styles.composerInputRow}>
           <Pressable onPress={pickImage} hitSlop={8} style={styles.toolBtn}>
-            <Image
-              source={require('../../../assets/illustrations/camera.png')}
-              style={styles.micGlyph}
-              resizeMode="contain"
-            />
+            <Text style={styles.toolBtnEmoji}>📎</Text>
           </Pressable>
           <View style={[styles.composerInputBox, inputFocused ? styles.composerInputBoxFocused : null, { borderColor: inputFocused ? accent.accent.fg : neutral.border }]}>
             <TextInput
@@ -636,15 +632,9 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
             hitSlop={8}
             style={[styles.toolBtn, voiceOn ? styles.toolBtnOn : null]}
           >
-            {voiceOn ? (
-              <Text style={[styles.toolBtnText, styles.toolBtnTextOn]}>■</Text>
-            ) : (
-              <Image
-                source={require('../../../assets/illustrations/mic.png')}
-                style={styles.micGlyph}
-                resizeMode="contain"
-              />
-            )}
+            <Text style={[styles.toolBtnEmoji, voiceOn ? styles.toolBtnEmojiOn : null]}>
+              {voiceOn ? '⏹' : '🎙'}
+            </Text>
           </Pressable>
         </View>
         <View style={styles.composerRow}>
@@ -793,6 +783,8 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: neutral.border,
   },
   toolBtnText: { fontSize: 18, color: neutral.ink, lineHeight: 22 },
+  toolBtnEmoji: { fontSize: 22, color: neutral.ink, lineHeight: 26 },
+  toolBtnEmojiOn: { color: '#fff' },
   toolBtnOn: { backgroundColor: neutral.err, borderColor: neutral.err },
   toolBtnTextOn: { color: '#fff' },
   micGlyph: { width: 22, height: 22 },

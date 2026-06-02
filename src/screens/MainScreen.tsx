@@ -114,7 +114,7 @@ export const MainScreen: React.FC = () => {
       <View style={[styles.appBar, { backgroundColor: neutral.bg, borderBottomColor: neutral.border }]}>
         {narrow ? (
           <Pressable hitSlop={12} onPress={() => setDrawerOpen(true)} style={styles.iconBtn}>
-            <Text style={styles.iconBtnText}>☰</Text>
+            <Text style={[styles.iconBtnText, styles.iconBtnKawaii]}>☰</Text>
           </Pressable>
         ) : null}
 
@@ -209,7 +209,7 @@ export const MainScreen: React.FC = () => {
           ) : null}
           {narrow ? (
             <Pressable hitSlop={12} onPress={() => setPromptsOpen(true)} style={styles.iconBtn}>
-              <Text style={[styles.iconBtnText, { color: accent.accent.fg }]}>✨</Text>
+              <Text style={[styles.iconBtnText, styles.iconBtnKawaii]}>✨</Text>
             </Pressable>
           ) : null}
           {narrow ? (
@@ -221,7 +221,7 @@ export const MainScreen: React.FC = () => {
             </Pressable>
           ) : null}
           <Pressable hitSlop={12} onPress={() => { haptic('medium'); createConv(); }} style={styles.iconBtn}>
-            <Text style={[styles.iconBtnText, { color: accent.accent.fg }]}>＋ ♡</Text>
+            <Text style={[styles.iconBtnText, styles.iconBtnAccent]}>＋</Text>
           </Pressable>
         </View>
       </View>
@@ -637,7 +637,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1, borderColor: neutral.border,
   },
-  iconBtnText: { fontSize: 18, color: neutral.ink, lineHeight: 22 },
+  iconBtnText: { fontSize: 20, color: neutral.ink, lineHeight: 24 },
+  iconBtnAccent: { color: '#007AFF' },   // primary CTA blue
+  iconBtnKawaii: { color: '#FF8FAB' },  // kawaii pink
+  iconBtnDot: { color: neutral.ink },
   iconBtnWithDot: { position: 'relative', width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
   statusDot: { position: 'absolute', right: -2, top: -2, width: 8, height: 8, borderRadius: 4, borderWidth: 1, borderColor: neutral.bg },
   titlePress: { flex: 1, minWidth: 0 },
