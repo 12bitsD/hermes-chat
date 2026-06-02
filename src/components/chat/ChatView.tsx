@@ -22,6 +22,14 @@ import { startVoice, requestVoicePermission } from '../../utils/voice';
  */
 const STICK_TO_BOTTOM_MS = 120;
 
+function guessKindFromName(name: string, mime: string): 'pdf' | 'ppt' | 'image' | 'text' | 'other' {
+  if (mime === 'application/pdf' || /\.pdf$/i.test(name)) return 'pdf';
+  if (mime.includes('presentation') || /\.(pptx|ppt)$/i.test(name)) return 'ppt';
+  if (mime.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(name)) return 'image';
+  if (mime.startsWith('text/') || /\.(md|txt|json|js|ts|py|css|html|xml|yaml|yml|csv)$/i.test(name)) return 'text';
+  return 'other';
+}
+
 export const ChatView: React.FC = () => {
   const insets = useSafeAreaInsets();
   const accent = useTheme();
@@ -257,6 +265,27 @@ export const ChatView: React.FC = () => {
   const onStop = () => { haptic('warning'); abortRef.current?.abort(); };
 
   const pickImage = useCallback(async () => {
+    // Try a document picker first (any file). If only the image picker is
+    // available, fall back to that. We deliberately do this without a
+    // long-press / action sheet to keep the surface area minimal.
+    try {
+      const mod = require('expo-document-picker');
+      const M = mod?.getDocumentAsync ?? mod?.default?.getDocumentAsync;
+      if (M) {
+        const res = await M({ copyToCacheDirectory: true, multiple: false });
+        if (!res.canceled && res.assets?.[0]) {
+          const a = res.assets[0];
+          const name = a.name ?? 'file';
+          const size = a.size ?? 0;
+          const kind = guessKindFromName(name, a.mimeType ?? '');
+          onFilePicked({ uri: a.uri, name, size, kind } as PickedFile);
+          haptic('light');
+          return;
+        }
+      }
+    } catch {
+      // fall through to image picker
+    }
     try {
       const mod = require('expo-image-picker');
       const M = mod?.launchImageLibraryAsync ?? mod?.default?.launchImageLibraryAsync;
@@ -270,7 +299,7 @@ export const ChatView: React.FC = () => {
       onFilePicked({ uri, name, kind: 'image', size, previewContent: undefined } as PickedFile);
       haptic('light');
     } catch (e: any) {
-      Alert.alert('Image picker', e?.message ?? String(e));
+      Alert.alert('Attach file', e?.message ?? String(e));
     }
   }, [onFilePicked]);
 

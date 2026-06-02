@@ -41,7 +41,7 @@ export interface PromptTemplate {
 }
 
 export type LLMProvider = 'mock' | 'hermes-gateway';
-export type Accent = 'mono' | 'blue' | 'pink' | 'green';
+export type Accent = 'mono' | 'ocean' | 'sakura' | 'forest';
 
 export interface AppSettings {
   /** Visual accent: mono | blue | pink | green */
@@ -66,7 +66,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  accent: 'blue',
+  accent: 'ocean',
   showSidebar: true,
   showIllustrations: true,
   fontSize: 13,

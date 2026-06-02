@@ -8,7 +8,7 @@
 
 import type { TextStyle } from 'react-native';
 
-export type AccentName = 'mono' | 'blue' | 'pink' | 'green';
+export type AccentName = 'mono' | 'ocean' | 'sakura' | 'forest';
 
 export interface FlatTheme {
   name: AccentName;
@@ -27,18 +27,18 @@ const accentDefs: Record<AccentName, FlatTheme> = {
     displayName: 'Mono',
     accent: { fg: '#111', fgOn: '#fff', soft: '#f1f1f1', line: '#e3e3e6' },
   },
-  blue: {
-    name: 'blue',
+  ocean: {
+    name: 'ocean',
     displayName: 'Ocean',
     accent: { fg: '#007AFF', fgOn: '#fff', soft: '#e6f0ff', line: '#d6e4ff' },
   },
-  pink: {
-    name: 'pink',
+  sakura: {
+    name: 'sakura',
     displayName: 'Sakura',
     accent: { fg: '#E91E63', fgOn: '#fff', soft: '#fde7ef', line: '#f7d4e0' },
   },
-  green: {
-    name: 'green',
+  forest: {
+    name: 'forest',
     displayName: 'Forest',
     accent: { fg: '#16a34a', fgOn: '#fff', soft: '#e8f7ee', line: '#d4ecde' },
   },
@@ -52,7 +52,7 @@ export function getAccent(name: string | undefined): FlatTheme {
 
 // ─── neutral grays ───────────────────────────────────────────────────────────
 
-export const neutral = {
+export const lightNeutral = {
   bg: '#FAFAFA',            // app background
   surface: '#FFFFFF',        // cards / inputs
   surfaceMuted: '#F4F4F5',  // hover, secondary surfaces
@@ -66,6 +66,24 @@ export const neutral = {
   warn: '#D97706',
   err: '#DC2626',
 } as const;
+
+export const darkNeutral = {
+  bg: '#0E0E10',             // app background
+  surface: '#1B1B1F',         // cards / inputs
+  surfaceMuted: '#26262C',   // hover, secondary surfaces
+  border: '#2A2A30',         // 1px dividers
+  borderStrong: '#3F3F46',   // heavier dividers
+  ink: '#FAFAFA',            // primary text
+  inkSoft: '#D4D4D8',
+  inkMuted: '#8E8E93',
+  inkInverse: '#18181B',
+  ok: '#4ADE80',
+  warn: '#FBBF24',
+  err: '#F87171',
+} as const;
+
+// Use light by default; theme/index.ts will swap based on Appearance.
+export const neutral = lightNeutral;
 
 // ─── spacing & radius ────────────────────────────────────────────────────────
 
