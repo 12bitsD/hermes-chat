@@ -11,6 +11,8 @@ import { lightNeutral, darkNeutral, neutral as defaultNeutral, type, space, radi
 
 export { accentList, getAccent, lightNeutral, darkNeutral, type, space, radius, shadow, z, easing };
 export type { FlatTheme, AccentName };
+export type { ProviderId, EndpointPreset } from '../services/llm/config';
+export { PRESETS as ENDPOINT_PRESETS, defaultEndpoint as defaultEndpointUrl } from '../services/llm/config';
 
 // Back-compat: theme/index.ts still re-exports `neutral` (resolves to light).
 // Components that need dark mode should call useNeutral() instead.

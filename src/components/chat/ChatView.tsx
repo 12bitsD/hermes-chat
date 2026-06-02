@@ -14,6 +14,7 @@ import { isNarrow } from '../../utils/platform';
 import { haptic } from '../../utils/haptic';
 import { throttle } from '../../utils/perf';
 import { startVoice, requestVoicePermission } from '../../utils/voice';
+import { getHermesClient } from '../../services/llm';
 
 /**
  * Scroll-to-bottom smoothing target. RN ScrollView can't animate to "the
@@ -37,8 +38,10 @@ export const ChatView: React.FC = () => {
   const messages = useAppStore((s) => s.getActiveMessages());
   const appendMessage = useAppStore((s) => s.appendMessage);
   const updateMessage = useAppStore((s) => s.updateMessage);
-  const showIllustrations = useAppStore((s) => s.settings.showIllustrations); // reserved for mascot toggle
+  const settings = useAppStore((s) => s.settings);
   const systemPrompt = useAppStore((s) => s.settings.systemPrompt);
+  const maxTokens = useAppStore((s) => s.settings.maxTokens);
+  const sessionKey = useAppStore((s) => s.settings.sessionKey);
 
   const [input, setInput] = useState('');
   const [pendingFiles, setPendingFiles] = useState<PickedFile[]>([]);
@@ -198,11 +201,20 @@ export const ChatView: React.FC = () => {
     let acc = '';
     try {
       const client: LLMClient = getLLMClient();
+      // Hermes-aware: forward the conversation id as a session id, and the
+      // user-configured session key for long-term memory scoping. Plain
+      // OpenAI-compatible backends will just ignore these headers.
+      const hermes = getHermesClient();
+      const streamCtx = hermes
+        ? { sessionId: conversationId, sessionKey }
+        : undefined;
       await client.streamChat(
         {
           conversationId,
           messages: historyMessages,
           signal: ctrl.signal,
+          maxTokens,
+          temperature: settings.temperature,
         },
         {
           onChunk: (chunk) => {
@@ -234,6 +246,7 @@ export const ChatView: React.FC = () => {
             haptic('error');
           },
         },
+        streamCtx,
       );
     } catch (e: any) {
       if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
@@ -249,7 +262,7 @@ export const ChatView: React.FC = () => {
       setStreaming(false);
       abortRef.current = null;
     }
-  }, [input, streaming, conversationId, appendMessage, updateMessage, pendingFiles, systemPrompt]);
+  }, [input, streaming, conversationId, appendMessage, updateMessage, pendingFiles, systemPrompt, maxTokens, sessionKey, settings.temperature]);
 
   const onKeyPress = useCallback(
     (e: any) => {

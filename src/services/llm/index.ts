@@ -35,5 +35,11 @@ export function getLLMConfig(): LLMConfig {
   return cachedConfig;
 }
 
+/** Cast helper for the Hermes session-context header forwarding. */
+export function getHermesClient(): HermesGatewayClient | null {
+  const c = getLLMClient();
+  return c instanceof HermesGatewayClient ? c : null;
+}
+
 export type { LLMClient, LLMStreamRequest, LLMStreamHandlers, ChatMessageInput } from './types';
 export type { LLMConfig } from './config';

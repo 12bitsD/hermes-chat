@@ -41,6 +41,12 @@ export interface LLMStreamHandlers {
   onError: (err: Error) => void;
 }
 
+export interface LLMStreamContext {
+  /** Optional Hermes-specific context. Other clients ignore this. */
+  sessionId?: string;
+  sessionKey?: string;
+}
+
 export interface LLMClient {
   /** Provider id used in the settings UI / logs */
   readonly id: 'mock' | 'hermes-gateway' | 'openai-compatible';
@@ -49,7 +55,7 @@ export interface LLMClient {
   /** Cheap, non-streaming ping used at boot to decide which provider to use */
   isReachable(): Promise<boolean>;
   /** Start a streaming chat completion. Returns once the stream ends or errors. */
-  streamChat(req: LLMStreamRequest, handlers: LLMStreamHandlers): Promise<void>;
+  streamChat(req: LLMStreamRequest, handlers: LLMStreamHandlers, ctx?: LLMStreamContext): Promise<void>;
   /** Optional — list available models for the model-picker UI */
   listModels?(): Promise<{ id: string; label: string }[]>;
 }

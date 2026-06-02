@@ -63,6 +63,10 @@ export interface AppSettings {
   systemPrompt: string;
   /** Temperature 0-1; undefined = server default */
   temperature?: number;
+  /** Optional max tokens; undefined = server default */
+  maxTokens?: number;
+  /** Hermes-only: scopes long-term memory via X-Hermes-Session-Key */
+  sessionKey?: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {

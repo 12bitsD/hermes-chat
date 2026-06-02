@@ -11,10 +11,22 @@
  * OpenAI Chat Completions SSE, so we don't need a custom protocol. The same
  * client can also point at any OpenAI-compatible provider if Hermes isn't
  * available, with no code change.
+ *
+ * Agent-friendly: we forward `X-Hermes-Session-Id` (so the Hermes backend
+ * can stitch turns into a persistent session via SessionDB) and
+ * `X-Hermes-Session-Key` (so a long-term memory key can scope context).
+ * Both headers are no-ops on a generic OpenAI-compatible server.
  */
 
 import type { LLMClient, LLMStreamRequest, LLMStreamHandlers } from './types';
 import type { LLMConfig } from './config';
+
+export interface HermesRequestContext {
+  /** Maps to X-Hermes-Session-Id on the gateway. */
+  sessionId?: string;
+  /** Maps to X-Hermes-Session-Key on the gateway. */
+  sessionKey?: string;
+}
 
 export class HermesGatewayClient implements LLMClient {
   readonly id = 'hermes-gateway' as const;
@@ -26,6 +38,7 @@ export class HermesGatewayClient implements LLMClient {
   async isReachable(): Promise<boolean> {
     try {
       const url = this.modelsUrl();
+      if (!url) return false;
       const res = await fetch(url, {
         method: 'GET',
         headers: this.headers(),
@@ -38,7 +51,7 @@ export class HermesGatewayClient implements LLMClient {
     }
   }
 
-  async streamChat(req: LLMStreamRequest, h: LLMStreamHandlers): Promise<void> {
+  async streamChat(req: LLMStreamRequest, h: LLMStreamHandlers, ctx: HermesRequestContext = {}): Promise<void> {
     const body = {
       model: req.model ?? this.config.defaultModel,
       messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
@@ -51,7 +64,7 @@ export class HermesGatewayClient implements LLMClient {
     try {
       res = await fetch(this.config.endpoint, {
         method: 'POST',
-        headers: this.headers(),
+        headers: { ...this.headers(), ...this.sessionHeaders(ctx) },
         body: JSON.stringify(body),
         signal: req.signal,
       } as RequestInit);
@@ -69,8 +82,6 @@ export class HermesGatewayClient implements LLMClient {
 
     let acc = '';
     try {
-      // RN fetch ReadableStream support is good on modern RN (0.74+). We use the
-      // stream reader to get chunks of SSE text.
       const reader = (res.body as ReadableStream<Uint8Array>).getReader();
       const decoder = new TextDecoder('utf-8');
       let sseBuf = '';
@@ -83,8 +94,6 @@ export class HermesGatewayClient implements LLMClient {
         if (done) break;
         sseBuf += decoder.decode(value, { stream: true });
 
-        // Split on newlines; SSE uses \n\n as event boundary but providers
-        // often emit single \n as delimiter. We process line-by-line.
         let nl: number;
         while ((nl = sseBuf.indexOf('\n')) >= 0) {
           const line = sseBuf.slice(0, nl).trim();
@@ -118,7 +127,9 @@ export class HermesGatewayClient implements LLMClient {
   /** Optional — best-effort model list. Many local gateways don't expose /v1/models. */
   async listModels(): Promise<{ id: string; label: string }[]> {
     try {
-      const res = await fetch(this.modelsUrl(), {
+      const url = this.modelsUrl();
+      if (!url) return [];
+      const res = await fetch(url, {
         method: 'GET',
         headers: this.headers(),
         signal: AbortSignal.timeout(2500),
@@ -134,6 +145,7 @@ export class HermesGatewayClient implements LLMClient {
 
   private modelsUrl(): string {
     // Strip trailing /chat/completions and append /models. If endpoint is weird, fall back.
+    if (!this.config.endpoint) return '';
     const base = this.config.endpoint.replace(/\/chat\/completions\/?$/, '');
     return `${base}/models`;
   }
@@ -144,6 +156,15 @@ export class HermesGatewayClient implements LLMClient {
       Accept: 'text/event-stream',
     };
     if (this.config.apiKey) h.Authorization = `Bearer ${this.config.apiKey}`;
+    return h;
+  }
+
+  /** Hermes-specific session headers. Sent on every request when the
+   *  conversation has a stable id so the gateway can stitch a thread. */
+  private sessionHeaders(ctx: HermesRequestContext): Record<string, string> {
+    const h: Record<string, string> = {};
+    if (ctx.sessionId) h['X-Hermes-Session-Id'] = ctx.sessionId;
+    if (ctx.sessionKey) h['X-Hermes-Session-Key'] = ctx.sessionKey;
     return h;
   }
 }
