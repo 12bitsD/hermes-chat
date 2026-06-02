@@ -612,6 +612,7 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
                   message={m}
                   isLast={i === arr.length - 1}
                   onSyncToHermes={m.role !== 'user' ? syncFromHermes : undefined}
+                  onSend={m.role !== 'user' ? (text) => { setInput(text); setTimeout(() => send(), 50); } : undefined}
                 />
               ))
           )}

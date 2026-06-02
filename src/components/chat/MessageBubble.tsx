@@ -11,9 +11,10 @@ export interface MessageBubbleProps {
   message: Message;
   isLast: boolean;
   onSyncToHermes?: () => void;
+  onSend?: (text: string) => void;
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message, isLast, onSyncToHermes }) => {
+export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message, isLast, onSyncToHermes, onSend }) => {
   const accent = useTheme();
   const blocks = useMemo(() => parseMarkdown(message.content), [message.content]);
   const [expanded, setExpanded] = useState<number | null>(null);
@@ -107,6 +108,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
           <Text style={[styles.heartbeat, isUser ? styles.heartbeatUser : [styles.heartbeatAssistant, { color: neutral.inkMuted }]]}>✓</Text>
         ) : null}
         {message.status === 'error' ? <Text style={styles.errMark}>⚠ error</Text> : null}
+        {!isUser && message.status === 'done' && isLast && onSend ? (
+          <QuickReplies
+            onPick={(text) => { haptic('light'); onSend(text); }}
+            content={message.content}
+          />
+        ) : null}
       </View>
     </View>
   );
@@ -130,6 +137,52 @@ const MascotAvatar: React.FC<{ small?: boolean }> = ({ small = false }) => {
         style={{ width: size, height: size, borderRadius: size / 2 }}
         resizeMode="cover"
       />
+    </View>
+  );
+};
+
+// ─── Quick replies (under the last assistant message) ───────────────────────
+
+/**
+ * QuickReplies — small chip row under the last assistant reply.
+ * One-tap context-aware follow-ups. Designed to make the
+ * "habit loop" tight: see answer → tap next action.
+ *
+ * Suggestions are inferred from the message content. For now we
+ * ship three universal chips; the heuristic can grow.
+ */
+const QuickReplies: React.FC<{ onPick: (text: string) => void; content: string }> = ({ onPick, content }) => {
+  const c = content.toLowerCase();
+  const chips: { label: string; text: string }[] = [];
+  // Heuristic 1: short answer → ask for more
+  if (content.length < 320 && !c.includes('```')) {
+    chips.push({ label: 'More detail', text: 'Can you go deeper? More detail please.' });
+  }
+  // Heuristic 2: code block → explain it
+  if (c.includes('```')) {
+    chips.push({ label: 'Explain code', text: 'Walk me through this code line by line.' });
+  }
+  // Heuristic 3: bullet list → summarize or convert
+  if (/^\s*[-*]\s/m.test(content)) {
+    chips.push({ label: 'Summarize', text: 'Summarize the above in 2 sentences.' });
+  }
+  // Always-offer chips
+  chips.push({ label: '👍 Continue', text: 'Continue. What else?' });
+
+  return (
+    <View style={styles.quickReplies}>
+      {chips.map((c, i) => (
+        <Pressable
+          key={i}
+          onPress={() => onPick(c.text)}
+          style={({ pressed }) => [
+            styles.quickReplyChip,
+            pressed ? styles.quickReplyChipPressed : null,
+          ]}
+        >
+          <Text style={styles.quickReplyText} numberOfLines={1}>{c.label}</Text>
+        </Pressable>
+      ))}
     </View>
   );
 };
@@ -452,6 +505,14 @@ const styles = StyleSheet.create({
   cursorOnNeutral: { color: neutral.ink },
   cursorOff: { opacity: 0 },
   heartbeat: { fontSize: 10, marginTop: 2 },
+  quickReplies: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
+  quickReplyChip: {
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: 12, borderWidth: 1, borderColor: neutral.border,
+    backgroundColor: neutral.surface,
+  },
+  quickReplyChipPressed: { backgroundColor: neutral.surfaceMuted, opacity: 0.7 },
+  quickReplyText: { ...type.caption, color: neutral.ink, fontSize: 11 },
   heartbeatUser: { color: '#ffffffcc', alignSelf: 'flex-end' },
   heartbeatAssistant: { alignSelf: 'flex-end' },
   errMark: { color: neutral.err, fontSize: 11, marginTop: 2, fontWeight: '600' },
