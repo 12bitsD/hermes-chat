@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView, TextInput,
-  Modal, Animated, Platform, StatusBar,
+  Modal, Animated, Platform, StatusBar, Clipboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { neutral, type, space, radius, useTheme } from '../theme';
@@ -97,6 +97,12 @@ export const MainScreen: React.FC = () => {
           <Pressable
             style={styles.titlePress}
             onPress={() => { if (active) { haptic('light'); setDraftTitle(active.title); setEditingTitle(true); } }}
+            onLongPress={() => {
+              if (active) {
+                haptic('medium');
+                try { Clipboard.setString(active.id); } catch { /* noop */ }
+              }
+            }}
           >
             <View style={styles.titleRow}>
               <Text numberOfLines={1} style={styles.appBarTitle}>🌸 {active?.title ?? 'Hermes'}</Text>
@@ -104,6 +110,7 @@ export const MainScreen: React.FC = () => {
             </View>
             <Text numberOfLines={1} style={styles.appBarSubtitle}>
               📱 {`${Object.keys(conversations).length} sessions ♡`}
+              {active?.id ? ` · 🆔 ${active.id.slice(-8)}` : ''}
             </Text>
           </Pressable>
         )}
