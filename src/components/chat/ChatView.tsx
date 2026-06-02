@@ -1,32 +1,67 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Keyboard, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Keyboard, Platform, KeyboardAvoidingView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { palette, type, space, bevel } from '../../theme';
 import { TextField, Button } from '../win95';
 import { MessageBubble } from './MessageBubble';
 import { AttachZone, PickedFile, FileCard } from './FileCard';
 import { useAppStore } from '../../store/app';
-import { streamMockReply, makeUserMessage, makeAssistantMessage } from '../../services/mock-llm';
+import { getLLMClient } from '../../store/persistence';
+import type { LLMClient } from '../../services/llm';
+import { makeUserMessage, makeAssistantMessage } from '../../services/mock-llm';
+import { isNarrow } from '../../utils/platform';
+import { haptic } from '../../utils/haptic';
+
+/**
+ * Scroll-to-bottom smoothing target. RN ScrollView can't animate to "the
+ * very bottom" in one shot while content height is changing (streaming),
+ * so we keep nudging for a couple of frames after the last chunk.
+ */
+const STICK_TO_BOTTOM_MS = 120;
 
 export const ChatView: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const conversationId = useAppStore((s) => s.activeConversationId);
   const messages = useAppStore((s) => s.getActiveMessages());
   const appendMessage = useAppStore((s) => s.appendMessage);
   const updateMessage = useAppStore((s) => s.updateMessage);
   const showIllustrations = useAppStore((s) => s.settings.showIllustrations);
+  const systemPrompt = useAppStore((s) => s.settings.systemPrompt);
 
   const [input, setInput] = useState('');
   const [pendingFiles, setPendingFiles] = useState<PickedFile[]>([]);
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<ScrollView | null>(null);
+  const stickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stickToBottom = useCallback(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollToEnd({ animated: true });
+    }
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current && messages.length > 0) {
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 30);
+      stickToBottom();
     }
-  }, [messages.length, messages[messages.length - 1]?.content]);
+  }, [messages.length, stickToBottom]);
 
+  useEffect(() => {
+    if (stickTimer.current) clearTimeout(stickTimer.current);
+    const last = messages[messages.length - 1];
+    if (last?.status === 'streaming') {
+      // Keep nudging for a moment after the last update, in case more chunks are about to arrive
+      stickTimer.current = setTimeout(stickToBottom, STICK_TO_BOTTOM_MS);
+    }
+    return () => {
+      if (stickTimer.current) clearTimeout(stickTimer.current);
+    };
+  }, [messages, stickToBottom]);
+
+  // Listen for prompt-template inserts from PromptNavigator
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onInsert = (e: Event) => {
@@ -51,9 +86,9 @@ export const ChatView: React.FC = () => {
     if (!text || streaming || !conversationId) return;
     Keyboard.dismiss();
     setInput('');
+    setStreamError(null);
 
     const userMsg = makeUserMessage(text);
-    // Attach files as message attachments (visual cards in the message)
     if (pendingFiles.length > 0) {
       userMsg.attachments = pendingFiles.map((f) => ({
         id: f.uri,
@@ -71,24 +106,69 @@ export const ChatView: React.FC = () => {
     setPendingFiles([]);
 
     setStreaming(true);
-    abortRef.current = new AbortController();
-    try {
-      let acc = '';
-      for await (const chunk of streamMockReply(text, abortRef.current.signal)) {
-        acc += chunk;
-        updateMessage(conversationId, assistantMsg.id, { content: acc });
+    haptic('light');
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    // Build the conversation history to send upstream
+    const prev = useAppStore.getState().getActiveMessages();
+    const historyMessages: { role: 'user' | 'assistant' | 'system'; content: string }[] = [];
+    if (systemPrompt && systemPrompt.trim()) {
+      historyMessages.push({ role: 'system', content: systemPrompt });
+    }
+    for (const m of prev) {
+      if (m.id === assistantMsg.id) continue; // skip the empty placeholder we just added
+      if (m.role === 'user' || m.role === 'assistant') {
+        historyMessages.push({ role: m.role, content: m.content });
       }
-      updateMessage(conversationId, assistantMsg.id, { status: 'done' });
-    } catch (e) {
-      updateMessage(conversationId, assistantMsg.id, { status: 'error', content: `**Error**: ${String(e)}` });
+    }
+
+    let acc = '';
+    try {
+      const client: LLMClient = getLLMClient();
+      await client.streamChat(
+        {
+          conversationId,
+          messages: historyMessages,
+          signal: ctrl.signal,
+        },
+        {
+          onChunk: (chunk) => {
+            acc += chunk;
+            updateMessage(conversationId, assistantMsg.id, { content: acc });
+          },
+          onDone: () => {
+            updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
+            haptic('success');
+          },
+          onError: (err) => {
+            const msg = err?.message ?? String(err);
+            setStreamError(msg);
+            updateMessage(conversationId, assistantMsg.id, {
+              content: acc + (acc ? '\n\n' : '') + `**Error**: ${msg}`,
+              status: 'error',
+            });
+            haptic('error');
+          },
+        },
+      );
+    } catch (e: any) {
+      const msg = e?.message ?? String(e);
+      setStreamError(msg);
+      updateMessage(conversationId, assistantMsg.id, {
+        content: acc + (acc ? '\n\n' : '') + `**Error**: ${msg}`,
+        status: 'error',
+      });
+      haptic('error');
     } finally {
       setStreaming(false);
       abortRef.current = null;
     }
-  }, [input, streaming, conversationId, appendMessage, updateMessage, pendingFiles]);
+  }, [input, streaming, conversationId, appendMessage, updateMessage, pendingFiles, systemPrompt]);
 
   const onKeyPress = useCallback(
     (e: any) => {
+      // Enter to send on web; mobile keyboards just insert a newline + Send button
       if ((e?.nativeEvent?.key === 'Enter') && !e?.nativeEvent?.shiftKey && Platform.OS === 'web') {
         e.preventDefault?.();
         send();
@@ -97,26 +177,48 @@ export const ChatView: React.FC = () => {
     [send],
   );
 
-  const onStop = () => abortRef.current?.abort();
+  const onStop = () => { haptic('warning'); abortRef.current?.abort(); };
+
+  const isMobile = isNarrow;
 
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={isMobile ? 0 : 0}
+    >
+      {/* Message canvas */}
       <View style={[styles.canvas, bevel.inset]}>
-        <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          onContentSizeChange={stickToBottom}
+        >
           {messages.map((m, i) => (
             <MessageBubble key={m.id} message={m} isLast={i === messages.length - 1} />
           ))}
-          {messages.length === 1 && showIllustrations ? (
+          {messages.length <= 1 && showIllustrations ? (
             <View style={styles.illustration}>
               <Text style={styles.illustrationEmoji}>🌸</Text>
-              <Text style={styles.illustrationCaption}>(少女立绘占位 — Phase 3 接入 GPT Image 2)</Text>
+              <Text style={styles.illustrationCaption}>少女立绘占位 — Phase 3 接入</Text>
             </View>
           ) : null}
         </ScrollView>
       </View>
 
+      {streamError ? (
+        <View style={styles.errorBar}>
+          <Text style={styles.errorText} numberOfLines={2}>⚠ {streamError}</Text>
+          <Pressable onPress={() => setStreamError(null)} hitSlop={8}>
+            <Text style={styles.errorDismiss}>×</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <AttachZone onFilePicked={onFilePicked} buttonLabel={Platform.OS === 'web' ? 'Drop / click' : 'Tap to attach'}>
-        <View style={styles.composer}>
+        <View style={[styles.composer, { paddingBottom: isMobile ? Math.max(4, insets.bottom - 4) : 4 }]}>
           {pendingFiles.length > 0 ? (
             <ScrollView horizontal style={styles.fileStrip} contentContainerStyle={styles.fileStripContent}>
               {pendingFiles.map((f) => (
@@ -139,13 +241,17 @@ export const ChatView: React.FC = () => {
             value={input}
             onChangeText={setInput}
             onKeyPress={onKeyPress}
-            placeholder="Type a message...  (Enter to send, Shift+Enter for newline)"
+            placeholder={isMobile ? 'Type a message…' : 'Type a message...  (Enter to send, Shift+Enter for newline)'}
             multiline
             style={styles.composerInput}
           />
           <View style={styles.composerRow}>
-            <Text style={styles.hint}>
-              {streaming ? 'Hermes is typing…' : pendingFiles.length > 0 ? `${pendingFiles.length} file(s) attached` : 'Press Enter to send'}
+            <Text style={styles.hint} numberOfLines={1}>
+              {streaming
+                ? 'Hermes is typing…'
+                : pendingFiles.length > 0
+                  ? `${pendingFiles.length} file(s) attached`
+                  : isMobile ? 'tap send' : 'Press Enter to send'}
             </Text>
             {streaming ? (
               <Button label="Stop" onPress={onStop} small />
@@ -155,7 +261,7 @@ export const ChatView: React.FC = () => {
           </View>
         </View>
       </AttachZone>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -167,11 +273,17 @@ const styles = StyleSheet.create({
   illustration: { alignItems: 'center', marginTop: space.lg, opacity: 0.6 },
   illustrationEmoji: { fontSize: 48 },
   illustrationCaption: { ...type.ui, color: palette.inkMuted, marginTop: 4, fontStyle: 'italic' },
-  composer: { paddingHorizontal: space.xs, paddingBottom: space.xs },
+  composer: { paddingHorizontal: space.xs },
   fileStrip: { maxHeight: 140, marginBottom: 4 },
   fileStripContent: { paddingRight: 8 },
-  fileChip: { marginRight: 4, minWidth: 220, maxWidth: 280 },
-  composerInput: { minHeight: 60 },
+  fileChip: { marginRight: 4, minWidth: 180, maxWidth: 240 },
+  composerInput: { minHeight: 56, maxHeight: 140 },
   composerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
-  hint: { ...type.ui, color: palette.inkMuted, fontStyle: 'italic' },
+  hint: { ...type.ui, color: palette.inkMuted, fontStyle: 'italic', flex: 1, marginRight: 8 },
+  errorBar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: palette.err, paddingHorizontal: 8, paddingVertical: 4, marginHorizontal: space.xs,
+  },
+  errorText: { ...type.ui, color: '#fff', flex: 1, marginRight: 8 },
+  errorDismiss: { color: '#fff', fontSize: 18, paddingHorizontal: 4 },
 });

@@ -1,14 +1,16 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView, TextInput,
-  Modal, Animated, Platform, StatusBar, Dimensions, KeyboardAvoidingView,
+  Modal, Animated, Platform, StatusBar, Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { palette, type, space, bevel } from '../theme';
 import { Button, Panel } from '../components/win95';
 import { ChatView } from '../components/chat/ChatView';
 import { PromptNavigator } from '../components/prompt-nav/PromptNavigator';
+import { SettingsPanel } from '../components/SettingsPanel';
 import { useAppStore } from '../store/app';
+import { getLLMClient } from '../store/persistence';
 import { isNarrow, isAndroid, isNative, watchScreen } from '../utils/platform';
 import { haptic } from '../utils/haptic';
 
@@ -27,12 +29,32 @@ export const MainScreen: React.FC = () => {
   const [draftTitle, setDraftTitle] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [promptsOpen, setPromptsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [narrow, setNarrow] = useState(isNarrow);
 
   // Watch for size changes (rotate, foldable, etc.)
   useEffect(() => {
     return watchScreen((win) => setNarrow(win.width < 768));
   }, []);
+
+  // Periodic provider reachability probe so the status dot stays honest
+  const settings = useAppStore((s) => s.settings);
+  const [providerOk, setProviderOk] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = async () => {
+      try {
+        const ok = await getLLMClient().isReachable();
+        if (!cancelled) setProviderOk(ok);
+      } catch {
+        if (!cancelled) setProviderOk(false);
+      }
+      if (!cancelled) timer = setTimeout(tick, 30_000);
+    };
+    tick();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [settings.llmProvider, settings.llmEndpoint, settings.llmApiKey]);
 
   // Close drawer on active conversation change (mobile only)
   useEffect(() => {
@@ -82,6 +104,14 @@ export const MainScreen: React.FC = () => {
               <Text style={styles.iconBtnText}>✨</Text>
             </Pressable>
           ) : null}
+          {narrow ? (
+            <Pressable hitSlop={12} onPress={() => { haptic('light'); setSettingsOpen(true); }} style={styles.iconBtn}>
+              <View style={styles.iconBtnWithDot}>
+                <Text style={styles.iconBtnText}>⚙</Text>
+                <View style={[styles.statusDot, statusDotColor(settings.llmProvider, providerOk)]} />
+              </View>
+            </Pressable>
+          ) : null}
           <Pressable hitSlop={12} onPress={() => { haptic('medium'); createConv(); }} style={styles.iconBtn}>
             <Text style={[styles.iconBtnText, { color: palette.ink }]}>＋</Text>
           </Pressable>
@@ -96,7 +126,7 @@ export const MainScreen: React.FC = () => {
         </View>
       ) : (
         // Desktop / wide: three-pane window
-        <DesktopLayout />
+        <DesktopLayout onOpenSettings={() => setSettingsOpen(true)} />
       )}
 
       {/* ── Mobile drawer (sessions) ────────────────────────────────────── */}
@@ -126,13 +156,16 @@ export const MainScreen: React.FC = () => {
           }}
         />
       ) : null}
+
+      {/* ── Settings (both mobile and desktop) ──────────────────────────── */}
+      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </View>
   );
 };
 
 // ─── Desktop three-pane ──────────────────────────────────────────────────────
 
-const DesktopLayout: React.FC = () => {
+const DesktopLayout: React.FC<{ onOpenSettings: () => void }> = ({ onOpenSettings }) => {
   const conversations = useAppStore((s) => s.conversations);
   const order = useAppStore((s) => s.conversationOrder);
   const activeId = useAppStore((s) => s.activeConversationId);
@@ -192,10 +225,22 @@ const DesktopLayout: React.FC = () => {
             }
           }}
         />
+        <Pressable
+          onPress={onOpenSettings}
+          style={[styles.desktopSettingsBtn]}
+        >
+          <Text style={styles.desktopSettingsText}>⚙ Settings</Text>
+        </Pressable>
       </View>
     </View>
   );
 };
+
+function statusDotColor(provider: 'mock' | 'hermes-gateway', ok: boolean | null) {
+  if (provider === 'mock') return { backgroundColor: palette.cyberBlue };
+  if (ok === null) return { backgroundColor: palette.inkMuted };
+  return ok ? { backgroundColor: palette.ok } : { backgroundColor: palette.err };
+}
 
 // ─── Mobile drawer (sessions) ────────────────────────────────────────────────
 
@@ -351,6 +396,8 @@ const styles = StyleSheet.create({
     borderRightWidth: 1, borderBottomWidth: 1, borderRightColor: palette.bevelLo, borderBottomColor: palette.bevelLo,
   },
   iconBtnText: { fontSize: 20, color: palette.ink, lineHeight: 22 },
+  iconBtnWithDot: { position: 'relative', width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  statusDot: { position: 'absolute', right: -2, top: -2, width: 8, height: 8, borderRadius: 4, borderWidth: 1, borderColor: palette.surface },
   titlePress: { flex: 1, minWidth: 0 },
   titleInput: {
     flex: 1, ...type.body, color: palette.ink, backgroundColor: palette.paper,
@@ -366,6 +413,12 @@ const styles = StyleSheet.create({
   desktopBody: { flex: 1, flexDirection: 'row' },
   desktopCenter: { flex: 1 },
   desktopRight: { width: 280, marginLeft: 4, marginRight: 4, marginVertical: 4 },
+  desktopSettingsBtn: {
+    marginTop: 4, padding: 6, backgroundColor: palette.surface, alignItems: 'center',
+    borderTopWidth: 1, borderLeftWidth: 1, borderTopColor: palette.bevelHi, borderLeftColor: palette.bevelHi,
+    borderRightWidth: 1, borderBottomWidth: 1, borderRightColor: palette.bevelLo, borderBottomColor: palette.bevelLo,
+  },
+  desktopSettingsText: { ...type.uiBold, color: palette.ink },
 
   rail: { width: 220, marginLeft: 4, marginVertical: 4 },
   railHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 4 },
