@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { palette, type, space, bevel } from '../../theme';
 import { TextField, Button } from '../win95';
 import { MessageBubble } from './MessageBubble';
+import { EmptyState } from './EmptyState';
 import { AttachZone, PickedFile, FileCard } from './FileCard';
 import { useAppStore } from '../../store/app';
 import { getLLMClient } from '../../store/persistence';
@@ -188,7 +189,7 @@ export const ChatView: React.FC = () => {
       keyboardVerticalOffset={isMobile ? 0 : 0}
     >
       {/* Message canvas */}
-      <View style={[styles.canvas, bevel.inset]}>
+      <View style={styles.canvas}>
         <ScrollView
           ref={scrollRef}
           style={styles.scroll}
@@ -196,10 +197,16 @@ export const ChatView: React.FC = () => {
           keyboardShouldPersistTaps="handled"
           onContentSizeChange={stickToBottom}
         >
-          {messages.map((m, i) => (
-            <MessageBubble key={m.id} message={m} isLast={i === messages.length - 1} />
-          ))}
-          {messages.length <= 1 && showIllustrations ? (
+          {messages.filter((m) => m.role !== 'system').length === 0 ? (
+            <EmptyState onPick={(body) => setInput(body)} />
+          ) : (
+            messages
+              .filter((m) => m.role !== 'system')
+              .map((m, i, arr) => (
+                <MessageBubble key={m.id} message={m} isLast={i === arr.length - 1} />
+              ))
+          )}
+          {messages.filter((m) => m.role !== 'system').length === 0 && showIllustrations ? (
             <View style={styles.illustration}>
               <Text style={styles.illustrationEmoji}>🌸</Text>
               <Text style={styles.illustrationCaption}>少女立绘占位 — Phase 3 接入</Text>
@@ -267,9 +274,9 @@ export const ChatView: React.FC = () => {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  canvas: { flex: 1, backgroundColor: palette.paper, margin: space.xs, padding: 0 },
+  canvas: { flex: 1, backgroundColor: palette.canvas, margin: 0, padding: 0 },
   scroll: { flex: 1 },
-  scrollContent: { padding: space.sm, paddingBottom: space.xl },
+  scrollContent: { paddingTop: space.sm, paddingBottom: space.lg },
   illustration: { alignItems: 'center', marginTop: space.lg, opacity: 0.6 },
   illustrationEmoji: { fontSize: 48 },
   illustrationCaption: { ...type.ui, color: palette.inkMuted, marginTop: 4, fontStyle: 'italic' },
