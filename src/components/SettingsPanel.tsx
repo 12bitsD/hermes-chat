@@ -56,6 +56,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
   const [probeResult, setProbeResult] = useState<null | { ok: boolean; msg: string }>(null);
   const [models, setModels] = useState<{ id: string; label: string }[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [caps, setCaps] = useState<HermesCapabilities | null>(null);
+  const [loadingCaps, setLoadingCaps] = useState(false);
 
   // Re-sync drafts whenever panel opens (in case settings changed elsewhere)
   useEffect(() => {
@@ -155,6 +157,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
     }
   }, [provider, endpoint, apiKey, model, systemPrompt, temperature, streamChunkMs, haptics, maxTokens, sessionKey, updateSettings]);
 
+  const fetchCapabilitiesNow = useCallback(async () => {
+    if (provider !== 'hermes-gateway') return;
+    setLoadingCaps(true);
+    try {
+      const c = await fetchCapabilities({
+        provider: 'hermes-gateway',
+        endpoint: settings.llmEndpoint || defaultEndpoint('hermes-gateway'),
+        apiKey: settings.llmApiKey || undefined,
+        defaultModel: settings.llmModel,
+      });
+      setCaps(c);
+      haptic(c ? 'success' : 'warning');
+    } catch (e: any) {
+      setCaps(null);
+      haptic('error');
+    } finally {
+      setLoadingCaps(false);
+    }
+  }, [provider, settings.llmEndpoint, settings.llmApiKey, settings.llmModel]);
+
   const save = useCallback(() => {
     updateSettings({
       llmProvider: provider,
@@ -175,8 +197,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
     onClose();
   }, [provider, endpoint, apiKey, model, systemPrompt, temperature, streamChunkMs, haptics, accentKey, maxTokens, sessionKey, useRunsMode, updateSettings, onClose]);
 
-  const isCustom = provider === 'openai-compatible' || provider === 'hermes-gateway' || provider === 'ollama';
+  // Auto-load capabilities on open if hermes-gateway is selected
   const isHermes = provider === 'hermes-gateway';
+  useEffect(() => {
+    if (!open || !isHermes || caps || loadingCaps) return;
+    fetchCapabilitiesNow();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isHermes]);
+
+  const isCustom = provider === 'openai-compatible' || provider === 'hermes-gateway' || provider === 'ollama';
 
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
@@ -363,6 +392,41 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
             </Section>
           ) : null}
 
+          {/* ── Hermes capabilities (live discovery) ─────────────────────── */}
+          {isHermes ? (
+            <Section title="Hermes capabilities">
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <Button label="Refresh" onPress={fetchCapabilitiesNow} disabled={loadingCaps} small ghost />
+                {loadingCaps ? <ActivityIndicator /> : null}
+                {caps ? <Text style={styles.capsModel} numberOfLines={1}>{caps.platform} · {caps.model}</Text> : null}
+              </View>
+              {caps ? (
+                <View style={styles.capsGrid}>
+                  {Object.entries(CAPABILITY_LABELS).map(([key, meta]) => {
+                    const v = caps.features[key];
+                    const on = v === true || v === 'on' || v === 'true';
+                    if (v === undefined) return null;
+                    return (
+                      <View key={key} style={[styles.capsItem, on ? styles.capsItemOn : styles.capsItemOff]}>
+                        <Text style={[styles.capsItemMark, on ? styles.capsItemMarkOn : styles.capsItemMarkOff]}>
+                          {on ? '✓' : '·'}
+                        </Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.capsItemLabel}>{meta.label}</Text>
+                          <Text style={styles.capsItemBlurb} numberOfLines={1}>{meta.blurb}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : (
+                <Text style={styles.hint}>
+                  Tap Refresh to ask the gateway what it can do. If you're offline, this stays empty.
+                </Text>
+              )}
+            </Section>
+          ) : null}
+
           {/* ── Appearance ──────────────────────────────────────── */}
           <Section title="Appearance">
             <Text style={styles.label}>Accent</Text>
@@ -472,6 +536,16 @@ const styles = StyleSheet.create({
     borderWidth: 1, marginBottom: space.sm, gap: 2,
   },
   heroBannerText: { ...type.body, fontSize: 12, lineHeight: 16 },
+  capsModel: { ...type.caption, color: neutral.inkMuted, fontFamily: 'Courier', flex: 1, minWidth: 0 },
+  capsGrid: { gap: 4 },
+  capsItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, paddingVertical: 6, borderRadius: radius.sm, backgroundColor: neutral.bg },
+  capsItemOn: {},
+  capsItemOff: { opacity: 0.55 },
+  capsItemMark: { fontSize: 14, fontWeight: '700', width: 14, textAlign: 'center' },
+  capsItemMarkOn: { color: neutral.ok },
+  capsItemMarkOff: { color: neutral.inkMuted },
+  capsItemLabel: { ...type.uiBold, color: neutral.ink, fontSize: 12 },
+  capsItemBlurb: { ...type.caption, color: neutral.inkMuted, marginTop: 1 },
   presetGrid: { gap: space.xs },
   presetCard: {
     flexDirection: 'row', alignItems: 'center', gap: space.sm,
