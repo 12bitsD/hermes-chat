@@ -78,6 +78,7 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
   const activeRunStartedAtRef = useRef<number | null>(null);
 
   const [input, setInput] = useState('');
+  const [inputFocused, setInputFocused] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PickedFile[]>([]);
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
@@ -617,11 +618,13 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
               resizeMode="contain"
             />
           </Pressable>
-          <View style={[styles.composerInputBox, { borderColor: neutral.border }]}>
+          <View style={[styles.composerInputBox, inputFocused ? styles.composerInputBoxFocused : null, { borderColor: inputFocused ? accent.accent.fg : neutral.border }]}>
             <TextInput
               value={input}
               onChangeText={setInput}
               onKeyPress={onKeyPress}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
               placeholder={isMobile ? 'Message Hermes…' : 'Type a message...  (Enter to send, Shift+Enter for newline)'}
               placeholderTextColor={neutral.inkMuted}
               multiline
@@ -766,19 +769,27 @@ const styles = StyleSheet.create({
   illustration: { alignItems: 'center', marginTop: space.lg, opacity: 0.6 },
   illustrationEmoji: { fontSize: 48 },
   illustrationCaption: { ...type.caption, color: neutral.inkMuted, marginTop: 4, fontStyle: 'italic' },
-  composerWrap: { paddingHorizontal: space.sm, paddingTop: space.xs, paddingBottom: space.sm, backgroundColor: neutral.bg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: neutral.border },
+  composerWrap: {
+    paddingHorizontal: 10, paddingTop: 8, paddingBottom: 8,
+    backgroundColor: neutral.bg,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: neutral.border,
+  },
   fileStrip: { maxHeight: 140, marginBottom: 4 },
   fileStripContent: { paddingRight: 8 },
   fileChip: { marginRight: 4, minWidth: 180, maxWidth: 240 },
   composerInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.xs, marginTop: space.xs },
   composerInputBox: {
-    flex: 1, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: space.sm, paddingVertical: 2, backgroundColor: neutral.surface, minHeight: 40, justifyContent: 'center',
+    flex: 1, borderWidth: 1, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 2, backgroundColor: neutral.surface, minHeight: 40, justifyContent: 'center',
+  },
+  composerInputBoxFocused: {
+    backgroundColor: '#FFF',
+    shadowColor: '#FFB6C1', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 6, elevation: 2,
   },
   composerInput: { ...type.body, color: neutral.ink, padding: 0, minHeight: 32, maxHeight: 140 },
   toolBtn: {
-    width: 40, height: 40, alignItems: 'center', justifyContent: 'center',
+    width: 44, height: 44, alignItems: 'center', justifyContent: 'center',
     backgroundColor: neutral.surface,
-    borderRadius: radius.md,
+    borderRadius: 22,
     borderWidth: 1, borderColor: neutral.border,
   },
   toolBtnText: { fontSize: 18, color: neutral.ink, lineHeight: 22 },

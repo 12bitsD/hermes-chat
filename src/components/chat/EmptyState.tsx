@@ -52,7 +52,8 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ status, statusDetail, on
       {/* Hero illustration with status overlay */}
       <View style={styles.heroWrap}>
         <SparkleRing color={accent.accent.fg} count={6} />
-        <View style={[styles.heroImageBox, { backgroundColor: neutral.surface, borderColor: accent.accent.soft }]}>
+        <FallingPetals />
+        <View style={[styles.heroImageBox, { borderColor: accent.accent.soft }]}>
           <Image
             source={require('../../../assets/illustrations/remote-hero.png')}
             style={styles.heroImage}
@@ -63,8 +64,8 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ status, statusDetail, on
         <Text style={styles.heroSubtitle}>Drive your agent from your pocket.</Text>
         <Text style={styles.heroHint}>
           {narrow
-            ? 'Hold 🎙 to talk, or pick an action below.'
-            : 'Hold 🎙 to talk, or pick an action below.'}
+            ? 'Hold the mic to talk, or pick an action below.'
+            : 'Hold the mic to talk, or pick an action below.'}
         </Text>
       </View>
 
@@ -136,27 +137,93 @@ const StatusCard: React.FC<{ status: EmptyStateProps['status']; detail?: string 
   const accent = useTheme();
   const meta = (() => {
     switch (status) {
-      case 'connecting': return { dot: '#FBBF24', label: 'Connecting…',           border: neutral.border };
-      case 'idle':      return { dot: '#16A34A', label: 'Hermes agent is idle',   border: neutral.ok };
-      case 'running':   return { dot: '#007AFF', label: 'Hermes is working',     border: '#007AFF' };
-      case 'offline':   return { dot: '#DC2626', label: 'Hermes gateway offline', border: neutral.err };
+      case 'connecting': return { dot: '#FBBF24', label: 'Looking for Hermes on your network…',     border: neutral.border, icon: '🛰' };
+      case 'idle':      return { dot: '#16A34A', label: 'Hermes is online and ready ✨',          border: neutral.ok,    icon: '🌸' };
+      case 'running':   return { dot: '#007AFF', label: 'Hermes is working on it',                border: '#007AFF',   icon: '⚡' };
+      case 'offline':   return { dot: '#DC2626', label: 'Hermes gateway is offline',              border: neutral.err,  icon: '💤' };
     }
   })();
   return (
     <View style={[styles.statusCard, { borderColor: meta.border }]}>
-      <View style={[styles.statusDot, { backgroundColor: meta.dot }]}>
-        {status === 'connecting' ? <ActivityIndicator size="small" color={neutral.inkInverse} /> : null}
+      <View style={[styles.statusCardIcon, { backgroundColor: meta.dot + '20' }]}>
+        <Text style={styles.statusCardIconGlyph}>{meta.icon}</Text>
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={styles.statusLabel} numberOfLines={1}>{meta.label}</Text>
         {detail ? <Text style={styles.statusDetail} numberOfLines={1}>{detail}</Text> : null}
       </View>
+      {status === 'connecting' ? <ActivityIndicator size="small" color={meta.dot} /> : null}
       <Text style={[styles.statusSparkle, { color: accent.accent.fg }]}>
         {status === 'running' ? '⚡' : status === 'idle' ? '♡' : '✦'}
       </Text>
     </View>
   );
 };
+
+// ─── Falling petals (ambient) ───────────────────────────────────────────────
+
+/**
+ * FallingPetals — 6 cherry-blossom petals drifting downward around
+ * the hero illustration. Each petal starts at a different
+ * horizontal offset, with its own duration and starting delay.
+ * They wrap from -60 to hero height + 60 so the loop is seamless.
+ */
+const FallingPetals: React.FC = () => {
+  const petals = useRef(
+    Array.from({ length: 6 }).map((_, i) => ({
+      x: -100 + i * 40 + (i % 2) * 18,
+      delay: i * 380,
+      duration: 5500 + (i % 3) * 700,
+      drift: ((i * 17) % 30) - 15,
+      size: 12 + (i % 3) * 3,
+      glyph: i % 2 === 0 ? '🌸' : '✿',
+    })),
+  ).current;
+  return (
+    <View pointerEvents="none" style={petalStyles.layer}>
+      {petals.map((p, i) => (
+        <FallingPetal key={i} {...p} />
+      ))}
+    </View>
+  );
+};
+
+const FallingPetal: React.FC<{ x: number; delay: number; duration: number; drift: number; size: number; glyph: string }> = ({ x, delay, duration, drift, size, glyph }) => {
+  const progress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(progress, {
+        toValue: 1, duration, delay, easing: Easing.linear, useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [progress, duration, delay]);
+  const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [-40, 280] });
+  const translateX = progress.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, drift, drift / 2] });
+  const opacity = progress.interpolate({ inputRange: [0, 0.1, 0.85, 1], outputRange: [0, 0.8, 0.7, 0] });
+  const rotate = progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${360 + drift * 4}deg`] });
+  return (
+    <Animated.Text
+      style={[
+        petalStyles.petal,
+        {
+          left: x,
+          fontSize: size,
+          opacity,
+          transform: [{ translateX }, { translateY }, { rotate }],
+        },
+      ]}
+    >
+      {glyph}
+    </Animated.Text>
+  );
+};
+
+const petalStyles = StyleSheet.create({
+  layer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' },
+  petal: { position: 'absolute', top: 0 },
+});
 
 // ─── Sparkle ring (re-used from earlier phase) ─────────────────────────────
 
@@ -210,9 +277,16 @@ const styles = StyleSheet.create({
   heroWrap: { alignItems: 'center', marginBottom: space.lg, position: 'relative' },
   heroImageBox: {
     width: 220, height: 220, borderRadius: 24,
-    borderWidth: 2, padding: 8, marginBottom: space.md,
+    borderWidth: 1, padding: 0, marginBottom: space.md,
+    overflow: 'hidden',
+    backgroundColor: '#FFE4EC',  // soft pink wash so the white PNG edges blend
+    shadowColor: '#FFB6C1',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    elevation: 8,
   },
-  heroImage: { width: '100%', height: '100%', borderRadius: 18 },
+  heroImage: { width: '100%', height: '100%', borderRadius: 24, resizeMode: 'cover' },
   heroTitle: { ...type.hero, color: neutral.ink, fontSize: 26, marginBottom: 2 },
   heroSubtitle: { ...type.body, color: neutral.inkSoft, marginBottom: 4, textAlign: 'center' },
   heroHint: { ...type.caption, color: neutral.inkMuted, textAlign: 'center' },
@@ -233,6 +307,8 @@ const styles = StyleSheet.create({
     marginBottom: space.md, backgroundColor: neutral.surface,
   },
   statusDot: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  statusCardIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
+  statusCardIconGlyph: { fontSize: 18 },
   statusLabel: { ...type.uiBold, color: neutral.ink, fontSize: 13 },
   statusDetail: { ...type.caption, color: neutral.inkMuted, marginTop: 2 },
   statusSparkle: { fontSize: 16, marginLeft: 'auto' },

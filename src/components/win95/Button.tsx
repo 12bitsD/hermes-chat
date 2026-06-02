@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { Pressable, Text, StyleSheet, TextStyle, ViewStyle, GestureResponderEvent } from 'react-native';
+import React, { useState, useCallback, useRef } from 'react';
+import { Pressable, Text, StyleSheet, TextStyle, ViewStyle, GestureResponderEvent, Animated, Easing } from 'react-native';
 import { neutral, type, space, radius } from '../../theme';
 import { useTheme } from '../../theme';
 
@@ -34,8 +34,15 @@ export const Win95Button: React.FC<Win95ButtonProps> = ({
 }) => {
   const accent = useTheme();
   const [pressed, setPressed] = useState(false);
-  const onPressIn = useCallback(() => setPressed(true), []);
-  const onPressOut = useCallback(() => setPressed(false), []);
+  const scale = useRef(new Animated.Value(1)).current;
+  const onPressIn = useCallback(() => {
+    setPressed(true);
+    Animated.spring(scale, { toValue: 0.92, useNativeDriver: true, speed: 60, bounciness: 12 }).start();
+  }, [scale]);
+  const onPressOut = useCallback(() => {
+    setPressed(false);
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 14 }).start();
+  }, [scale]);
 
   // Resolve colors based on variant + state
   const filled = isDefault && !ghost;
@@ -45,32 +52,34 @@ export const Win95Button: React.FC<Win95ButtonProps> = ({
   const fg = filled ? accent.accent.fgOn : accent.accent.fg;
 
   return (
-    <Pressable
-      testID={testID}
-      onPress={onPress}
-      onPressIn={onPressIn}
-      onPressOut={onPressOut}
-      disabled={disabled}
-      hitSlop={4}
-      style={[
-        styles.base,
-        small ? styles.small : styles.normal,
-        { backgroundColor: bg, borderRadius: radius.md },
-        style,
-      ]}
-    >
-      <Text
-        numberOfLines={1}
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Pressable
+        testID={testID}
+        onPress={onPress}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+        disabled={disabled}
+        hitSlop={4}
         style={[
-          styles.label,
-          small ? styles.labelSmall : null,
-          { color: fg, opacity: disabled ? 0.4 : 1 },
-          textStyle,
+          styles.base,
+          small ? styles.small : styles.normal,
+          { backgroundColor: bg, borderRadius: radius.md },
+          style,
         ]}
       >
-        {label}
-      </Text>
-    </Pressable>
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.label,
+            small ? styles.labelSmall : null,
+            { color: fg, opacity: disabled ? 0.4 : 1 },
+            textStyle,
+          ]}
+        >
+          {label}
+        </Text>
+      </Pressable>
+    </Animated.View>
   );
 };
 
