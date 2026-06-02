@@ -16,6 +16,7 @@ import { View, Text, StyleSheet, Pressable, Image, Animated, Easing, ActivityInd
 import { neutral, type, space, radius, useTheme } from '../../theme';
 import { isNarrow } from '../../utils/platform';
 import { haptic } from '../../utils/haptic';
+import { useAppStore } from '../../store/app';
 
 export interface QuickAction {
   id: 'voice' | 'photo' | 'new-session' | 'open-existing';
@@ -70,6 +71,11 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ status, statusDetail, on
       {/* Live Hermes status card */}
       <StatusCard status={status} detail={statusDetail} />
 
+      {/* If the gateway has reported sessions, surface the count
+          right under the status card so a first-time user learns
+          that the drawer has remote items to import. */}
+      <HermesHasSessionsHint />
+
       {/* Quick action grid */}
       <View style={styles.actionGrid}>
         {ACTIONS.map((a) => (
@@ -109,6 +115,22 @@ const ScrollViewEquivalent: React.FC<{
 );
 
 // ─── Live status card ───────────────────────────────────────────────────────
+
+const HermesHasSessionsHint: React.FC = () => {
+  const snap = useAppStore((s) => s.hermesSnapshot);
+  const accent = useTheme();
+  if (!snap || snap.sessions.length === 0) return null;
+  return (
+    <View style={[styles.remoteHint, { backgroundColor: accent.accent.soft, borderColor: accent.accent.fg }]}>
+      <Text style={[styles.remoteHintEmoji]}>📡</Text>
+      <Text style={[styles.remoteHintText, { color: neutral.ink }]} numberOfLines={2}>
+        <Text style={{ fontWeight: '700' }}>{snap.sessions.length}</Text> conversation{snap.sessions.length === 1 ? '' : 's'} on your computer.
+        {' '}
+        Tap <Text style={{ fontWeight: '700' }}>☰</Text> to import one.
+      </Text>
+    </View>
+  );
+};
 
 const StatusCard: React.FC<{ status: EmptyStateProps['status']; detail?: string }> = ({ status, detail }) => {
   const accent = useTheme();
@@ -198,6 +220,13 @@ const styles = StyleSheet.create({
   ring: { position: 'absolute', top: '50%', left: '50%', width: 0, height: 0, alignItems: 'center', justifyContent: 'center' },
   ringSparkle: { position: 'absolute', fontSize: 14, opacity: 0.7 },
 
+  remoteHint: {
+    flexDirection: 'row', alignItems: 'center', gap: space.xs,
+    padding: space.sm, borderRadius: radius.md,
+    borderWidth: 1, marginBottom: space.sm,
+  },
+  remoteHintEmoji: { fontSize: 18 },
+  remoteHintText: { ...type.body, fontSize: 12, flex: 1 },
   statusCard: {
     flexDirection: 'row', alignItems: 'center', gap: space.sm,
     padding: space.sm, borderRadius: radius.md, borderWidth: 1,
