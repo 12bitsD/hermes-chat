@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView, TextInput,
-  Modal, Animated, Platform, StatusBar, Clipboard,
+  Modal, Animated, PanResponder, Platform, StatusBar, Clipboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { neutral, type, space, radius, useTheme } from '../theme';
@@ -13,12 +13,28 @@ import { useAppStore } from '../store/app';
 import { getLLMClient } from '../store/persistence';
 import { useHermesSnapshot } from '../store/useHermesSnapshot';
 import { HermesSessionsClient } from '../services/llm/sessions-client';
+import { WelcomeOverlay, shouldShowWelcome, markWelcomeSeen } from '../components/WelcomeOverlay';
 import { isNarrow, isNative, watchScreen } from '../utils/platform';
 import { haptic } from '../utils/haptic';
 
 export const MainScreen: React.FC = () => {
   // Keep a live snapshot of the Hermes backend in the store
   useHermesSnapshot();
+
+  // First-time welcome: when the gateway becomes reachable for the
+  // first time, show the welcome overlay. Persisted so returning
+  // users don't see it again.
+  const hermesSnapshot = useAppStore((s) => s.hermesSnapshot);
+  const [showWelcome, setShowWelcome] = useState(false);
+  useEffect(() => {
+    if (!hermesSnapshot) return;
+    let cancelled = false;
+    (async () => {
+      const should = await shouldShowWelcome(hermesSnapshot);
+      if (should && !cancelled) setShowWelcome(true);
+    })();
+    return () => { cancelled = true; };
+  }, [hermesSnapshot?.updatedAt]);
 
   const insets = useSafeAreaInsets();
   const accent = useTheme();
@@ -37,13 +53,33 @@ export const MainScreen: React.FC = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [narrow, setNarrow] = useState(isNarrow);
 
+  // iOS-style "swipe from the left edge" to open the drawer.
+  // PanResponder is captured in MainScreen (not a hook) so it can
+  // close over setDrawerOpen without a re-bind every render.
+  const edgeSwipePan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: (e) => {
+        const x = e.nativeEvent.locationX;
+        return x <= 24; // only the left edge
+      },
+      onMoveShouldSetPanResponder: (e, g) => {
+        return Math.abs(g.dx) > 8 && g.dx > 0 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5;
+      },
+      onPanResponderRelease: (e, g) => {
+        if (g.dx > 60 || g.vx > 0.4) {
+          haptic('light');
+          setDrawerOpen(true);
+        }
+      },
+    }),
+  ).current;
+
   useEffect(() => {
     return watchScreen((win) => setNarrow(win.width < 768));
   }, []);
   // Periodic provider reachability probe so the status dot stays honest
   const settings = useAppStore((s) => s.settings);
   const providerOk = useAppStore((s) => s.gatewayReachable);
-  const hermesSnapshot = useAppStore((s) => s.hermesSnapshot);
   const setProviderOk = useAppStore((s) => s.setGatewayReachable);
   useEffect(() => {
     let cancelled = false;
@@ -194,6 +230,14 @@ export const MainScreen: React.FC = () => {
       {narrow ? (
         <View style={styles.mobileBody}>
           <ChatView onOpenDrawer={() => setDrawerOpen(true)} />
+          {/* Edge-swipe zone: 24-px invisible strip along the left edge
+              that captures horizontal drags and opens the drawer.
+              iOS-style "swipe from the left edge" affordance. */}
+          <View
+            {...edgeSwipePan.panHandlers}
+            pointerEvents="auto"
+            style={styles.edgeSwipeZone}
+          />
         </View>
       ) : (
         <DesktopLayout
@@ -298,6 +342,12 @@ export const MainScreen: React.FC = () => {
 
       {/* ── Settings ────────────────────────────────────────────────── */}
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      {/* ── Welcome overlay — wow-moment on first connect ─────────── */}
+      <WelcomeOverlay
+        visible={showWelcome}
+        onDismiss={() => { setShowWelcome(false); markWelcomeSeen(); }}
+      />
     </View>
   );
 };
@@ -654,6 +704,10 @@ const styles = StyleSheet.create({
   },
   sheetHandleWrap: { alignItems: 'center', paddingBottom: space.xs },
   sheetHandle: { width: 40, height: 4, backgroundColor: neutral.border, borderRadius: 2 },
+  edgeSwipeZone: {
+    position: 'absolute', top: 0, bottom: 0, left: 0, width: 24,
+    backgroundColor: 'transparent',
+  },
 
   statusBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
