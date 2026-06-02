@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Keyboard, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Keyboard, Platform, KeyboardAvoidingView, Image, ActivityIndicator, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { palette, type, space, bevel } from '../../theme';
 import { TextField, Button } from '../win95';
@@ -13,6 +13,7 @@ import { makeUserMessage, makeAssistantMessage } from '../../services/mock-llm';
 import { isNarrow } from '../../utils/platform';
 import { haptic } from '../../utils/haptic';
 import { throttle } from '../../utils/perf';
+import { startVoice, requestVoicePermission } from '../../utils/voice';
 
 /**
  * Scroll-to-bottom smoothing target. RN ScrollView can't animate to "the
@@ -35,6 +36,9 @@ export const ChatView: React.FC = () => {
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [voiceOn, setVoiceOn] = useState(false);
+  const [voicePartial, setVoicePartial] = useState('');
+  const voiceStopRef = useRef<null | (() => Promise<string | null>)>(null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<ScrollView | null>(null);
   const stickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -43,6 +47,46 @@ export const ChatView: React.FC = () => {
     if (scrollRef.current) {
       scrollRef.current.scrollToEnd({ animated: true });
     }
+  }, []);
+
+  // Voice toggle
+  const toggleVoice = useCallback(async () => {
+    if (voiceOn) {
+      voiceStopRef.current?.();
+      voiceStopRef.current = null;
+      setVoiceOn(false);
+      setVoicePartial('');
+      return;
+    }
+    const ok = await requestVoicePermission();
+    if (!ok) {
+      Alert.alert('Voice input', 'Microphone permission was denied.');
+      return;
+    }
+    const stop = await startVoice(
+      (text, isFinal) => {
+        setVoicePartial(text);
+        if (isFinal) {
+          setInput((cur) => (cur ? cur + ' ' + text : text));
+          setVoicePartial('');
+        }
+      },
+      (err) => {
+        setVoiceOn(false);
+        setVoicePartial('');
+        Alert.alert('Voice input', err.message);
+      },
+    );
+    if (stop) {
+      voiceStopRef.current = stop;
+      setVoiceOn(true);
+      haptic('light');
+    }
+  }, [voiceOn]);
+
+  // Stop voice on unmount
+  useEffect(() => {
+    return () => { voiceStopRef.current?.(); };
   }, []);
 
   useEffect(() => {
@@ -201,6 +245,24 @@ export const ChatView: React.FC = () => {
 
   const onStop = () => { haptic('warning'); abortRef.current?.abort(); };
 
+  const pickImage = useCallback(async () => {
+    try {
+      const mod = require('expo-image-picker');
+      const M = mod?.launchImageLibraryAsync ?? mod?.default?.launchImageLibraryAsync;
+      if (!M) throw new Error('expo-image-picker not available');
+      const res = await M({ mediaTypes: ['images'], quality: 0.8, allowsMultipleSelection: false });
+      if (res.canceled || !res.assets?.[0]) return;
+      const a = res.assets[0];
+      const uri = a.uri;
+      const name = uri.split('/').pop() ?? 'image.jpg';
+      const size = a.fileSize ?? 0;
+      onFilePicked({ uri, name, kind: 'image', size, previewContent: undefined } as PickedFile);
+      haptic('light');
+    } catch (e: any) {
+      Alert.alert('Image picker', e?.message ?? String(e));
+    }
+  }, [onFilePicked]);
+
   const isMobile = isNarrow;
 
   return (
@@ -265,14 +327,29 @@ export const ChatView: React.FC = () => {
               ))}
             </ScrollView>
           ) : null}
-          <TextField
-            value={input}
-            onChangeText={setInput}
-            onKeyPress={onKeyPress}
-            placeholder={isMobile ? 'Type a message…' : 'Type a message...  (Enter to send, Shift+Enter for newline)'}
-            multiline
-            style={styles.composerInput}
-          />
+          {voiceOn && voicePartial ? (
+            <Text style={styles.voicePartial} numberOfLines={2}>🎙 {voicePartial}…</Text>
+          ) : null}
+          <View style={styles.composerInputRow}>
+            <Pressable onPress={pickImage} hitSlop={8} style={styles.toolBtn}>
+              <Text style={styles.toolBtnText}>🖼</Text>
+            </Pressable>
+            <TextField
+              value={input}
+              onChangeText={setInput}
+              onKeyPress={onKeyPress}
+              placeholder={isMobile ? 'Type a message…' : 'Type a message...  (Enter to send, Shift+Enter for newline)'}
+              multiline
+              style={[styles.composerInput, { flex: 1 }]}
+            />
+            <Pressable
+              onPress={toggleVoice}
+              hitSlop={8}
+              style={[styles.toolBtn, voiceOn ? styles.toolBtnOn : null]}
+            >
+              <Text style={[styles.toolBtnText, voiceOn ? styles.toolBtnTextOn : null]}>🎙</Text>
+            </Pressable>
+          </View>
           <View style={styles.composerRow}>
             <Text style={styles.hint} numberOfLines={1}>
               {streaming
@@ -305,7 +382,18 @@ const styles = StyleSheet.create({
   fileStrip: { maxHeight: 140, marginBottom: 4 },
   fileStripContent: { paddingRight: 8 },
   fileChip: { marginRight: 4, minWidth: 180, maxWidth: 240 },
+  composerInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
   composerInput: { minHeight: 56, maxHeight: 140 },
+  toolBtn: {
+    width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: palette.surface,
+    borderTopWidth: 1, borderLeftWidth: 1, borderTopColor: palette.bevelHi, borderLeftColor: palette.bevelHi,
+    borderRightWidth: 1, borderBottomWidth: 1, borderRightColor: palette.bevelLo, borderBottomColor: palette.bevelLo,
+  },
+  toolBtnText: { fontSize: 18, color: palette.ink, lineHeight: 22 },
+  toolBtnOn: { backgroundColor: palette.err, borderTopColor: palette.bevelLo, borderLeftColor: palette.bevelLo, borderRightColor: palette.bevelHi, borderBottomColor: palette.bevelHi },
+  toolBtnTextOn: { color: '#fff' },
+  voicePartial: { ...type.ui, color: palette.inkBlue, fontStyle: 'italic', marginBottom: 4 },
   composerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
   hint: { ...type.ui, color: palette.inkMuted, fontStyle: 'italic', flex: 1, marginRight: 8 },
   errorBar: {
