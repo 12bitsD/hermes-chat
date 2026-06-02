@@ -576,7 +576,11 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
         ) : null}
         <View style={styles.composerInputRow}>
           <Pressable onPress={pickImage} hitSlop={8} style={styles.toolBtn}>
-            <Text style={styles.toolBtnText}>🖼</Text>
+            <Image
+              source={require('../../../assets/illustrations/camera.png')}
+              style={styles.micGlyph}
+              resizeMode="contain"
+            />
           </Pressable>
           <View style={[styles.composerInputBox, { borderColor: neutral.border }]}>
             <TextInput
@@ -594,7 +598,15 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
             hitSlop={8}
             style={[styles.toolBtn, voiceOn ? styles.toolBtnOn : null]}
           >
-            <Text style={[styles.toolBtnText, voiceOn ? styles.toolBtnTextOn : null]}>🎙</Text>
+            {voiceOn ? (
+              <Text style={[styles.toolBtnText, styles.toolBtnTextOn]}>■</Text>
+            ) : (
+              <Image
+                source={require('../../../assets/illustrations/mic.png')}
+                style={styles.micGlyph}
+                resizeMode="contain"
+              />
+            )}
           </Pressable>
         </View>
         <View style={styles.composerRow}>
@@ -653,6 +665,7 @@ const styles = StyleSheet.create({
   toolBtnText: { fontSize: 18, color: neutral.ink, lineHeight: 22 },
   toolBtnOn: { backgroundColor: neutral.err, borderColor: neutral.err },
   toolBtnTextOn: { color: '#fff' },
+  micGlyph: { width: 22, height: 22 },
   voicePartial: { fontSize: 12, fontStyle: 'italic', marginBottom: 4 }, // color applied inline via accent
   composerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, marginBottom: 4 },
   hint: { ...type.caption, color: neutral.inkMuted, flex: 1, marginRight: 8 },
