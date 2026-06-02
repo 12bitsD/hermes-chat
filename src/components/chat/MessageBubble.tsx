@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, ActionSheetIOS, Platform, Share, Clipboard, Image } from 'react-native';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, Pressable, ActionSheetIOS, Platform, Share, Clipboard, Image, Animated, Easing } from 'react-native';
 import { neutral, type, space, radius, useTheme } from '../../theme';
 import { Message } from '../../types';
 import { FileCard } from './FileCard';
@@ -129,29 +129,53 @@ const MascotAvatar: React.FC<{ small?: boolean }> = ({ small = false }) => {
 
 // ─── Typing & cursor ──────────────────────────────────────────────────────────
 
+/**
+ * ThinkingMascot — a kawaii sparkle-ringed avatar that bobs up and
+ * down while the agent is composing. Replaces the old 3-dot typing
+ * indicator with something the user can *see*. The avatar reuses
+ * the small `avatar.png` (GPT-Image-2) at 28×28 so it stays cheap.
+ * A 6-point sparkle ring rotates around it via Animated.timing.
+ */
+const ThinkingMascot: React.FC = () => {
+  const ring = useRef(new Animated.Value(0)).current;
+  const bob = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const r = Animated.loop(Animated.timing(ring, { toValue: 1, duration: 4000, useNativeDriver: true, easing: Easing.linear }));
+    const b = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bob, { toValue: -4, duration: 350, useNativeDriver: true, easing: Easing.inOut(Easing.sin) }),
+        Animated.timing(bob, { toValue: 0,  duration: 350, useNativeDriver: true, easing: Easing.inOut(Easing.sin) }),
+      ]),
+    );
+    r.start(); b.start();
+    return () => { r.stop(); b.stop(); };
+  }, [ring, bob]);
+  const rotate = ring.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  return (
+    <View style={styles.thinkingWrap}>
+      <Animated.View pointerEvents="none" style={[styles.thinkingRing, { transform: [{ rotate }] }]}>
+        {Array.from({ length: 6 }).map((_, i) => {
+          const a = (i / 6) * Math.PI * 2;
+          const r = 18;
+          return (
+            <Text key={i} style={[styles.thinkingSparkle, { transform: [{ translateX: Math.cos(a) * r }, { translateY: Math.sin(a) * r }] }]}>
+              {i % 2 === 0 ? '✦' : '✧'}
+            </Text>
+          );
+        })}
+      </Animated.View>
+      <Animated.View style={{ transform: [{ translateY: bob }] }}>
+        <Image source={require('../../../assets/illustrations/avatar.png')} style={styles.thinkingAvatar} />
+      </Animated.View>
+    </View>
+  );
+};
+
 const TypingDots: React.FC = () => (
   <View style={styles.typingRow}>
-    <Dot delay={0} />
-    <Dot delay={150} />
-    <Dot delay={300} />
+    <ThinkingMascot />
   </View>
 );
-
-const Dot: React.FC<{ delay: number }> = ({ delay }) => {
-  const [phase, setPhase] = useState(0);
-  useEffect(() => {
-    let t1: any, t2: any, t3: any;
-    const tick = () => {
-      setPhase(1);
-      t1 = setTimeout(() => setPhase(0), 220);
-      t2 = setTimeout(() => setPhase(2), 440);
-      t3 = setTimeout(tick, 700);
-    };
-    const start = setTimeout(tick, delay);
-    return () => { clearTimeout(start); clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, [delay]);
-  return <View style={[styles.dot, phase === 1 ? styles.dotMid : phase === 2 ? styles.dotHi : styles.dotLo]} />;
-};
 
 const Cursor: React.FC<{ isUser: boolean }> = ({ isUser }) => {
   const [on, setOn] = useState(true);
@@ -425,9 +449,9 @@ const styles = StyleSheet.create({
   heartbeatAssistant: { alignSelf: 'flex-end' },
   errMark: { color: neutral.err, fontSize: 11, marginTop: 2, fontWeight: '600' },
 
-  typingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, height: 18 },
-  dot: { width: 6, height: 6, borderRadius: 3, marginHorizontal: 2, backgroundColor: neutral.inkMuted },
-  dotLo: { opacity: 0.3, transform: [{ translateY: 0 }] },
-  dotMid: { opacity: 0.6, transform: [{ translateY: -2 }] },
-  dotHi: { opacity: 1, transform: [{ translateY: -4 }] },
+  typingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, height: 44, paddingLeft: 0 },
+  thinkingWrap: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  thinkingRing: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  thinkingSparkle: { position: 'absolute', fontSize: 10, color: neutral.inkMuted },
+  thinkingAvatar: { width: 28, height: 28, borderRadius: 14 },
 });
