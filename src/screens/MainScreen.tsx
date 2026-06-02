@@ -150,6 +150,18 @@ export const MainScreen: React.FC = () => {
           onPick={(id) => { setActive(id); setDrawerOpen(false); }}
           onNew={() => { createConv(); setDrawerOpen(false); }}
           onDelete={(id) => deleteConv(id)}
+          onPickRemote={(id) => {
+            // Stub: a full impl would fetch /api/sessions/{id}/messages
+            // and create a local mirror conversation. For now, the
+            // affordance exists so the user can see their remote
+            // sessions in the drawer and tap them — the import story
+            // is a follow-up. We just close the drawer to give a
+            // visible response.
+            haptic('light');
+            setDrawerOpen(false);
+          }}
+          remoteSessions={hermesSnapshot?.sessions}
+          remoteGatewayReachable={!!hermesSnapshot}
           insets={insets}
         />
       ) : null}
@@ -297,10 +309,18 @@ interface DrawerProps {
   onPick: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  onPickRemote?: (id: string) => void;
+  remoteSessions?: { id: string; title?: string; messageCount?: number; updatedAt?: number }[];
+  remoteGatewayReachable: boolean;
   insets: { top: number; bottom: number; left: number; right: number };
 }
 
-const SessionDrawer: React.FC<DrawerProps> = ({ open, onClose, conversations, order, activeId, onPick, onNew, onDelete, insets }) => {
+const SessionDrawer: React.FC<DrawerProps> = ({
+  open, onClose, conversations, order, activeId,
+  onPick, onNew, onDelete, onPickRemote,
+  remoteSessions, remoteGatewayReachable,
+  insets,
+}) => {
   const accent = useTheme();
   const slideAnim = useRef(new Animated.Value(-1)).current;
 
@@ -330,6 +350,35 @@ const SessionDrawer: React.FC<DrawerProps> = ({ open, onClose, conversations, or
           </Pressable>
         </View>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: space.sm }}>
+          {remoteSessions && remoteSessions.length > 0 ? (
+            <View style={{ marginBottom: 8 }}>
+              <Text style={[styles.drawerSectionHeader, { color: accent.accent.fg }]}>
+                📡 Hermes (remote)
+              </Text>
+              {remoteSessions.map((s) => (
+                <Pressable
+                  key={`remote:${s.id}`}
+                  onPress={() => onPickRemote?.(s.id)}
+                  style={({ pressed }) => [
+                    styles.drawerItem,
+                    styles.drawerItemRemote,
+                    pressed ? styles.drawerItemPressed : null,
+                  ]}
+                >
+                  <Text numberOfLines={1} style={styles.drawerItemText}>
+                    🖥 {s.title || s.id}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.drawerItemMeta}>
+                    {s.messageCount != null ? `${s.messageCount} msg` : '—'} · {s.updatedAt ? timeAgo(s.updatedAt) : '—'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
+          <Text style={styles.drawerSectionHeader}>
+            📱 This device
+          </Text>
           {order.map((id) => {
             const c = conversations[id];
             if (!c) return null;
@@ -354,6 +403,13 @@ const SessionDrawer: React.FC<DrawerProps> = ({ open, onClose, conversations, or
               </Pressable>
             );
           })}
+          {order.length === 0 ? (
+            <Text style={styles.drawerHint}>
+              {remoteGatewayReachable
+                ? 'No local sessions. Tap a remote one above to import it.'
+                : 'No sessions yet. Tap + New to start one.'}
+            </Text>
+          ) : null}
         </ScrollView>
         <Text style={styles.drawerHint}>Tap switch · long-press delete</Text>
       </Animated.View>
@@ -476,6 +532,8 @@ const styles = StyleSheet.create({
   drawerItemText: { ...type.body, color: neutral.ink, fontSize: 14 },
   drawerItemTextActive: { fontWeight: '600' },
   drawerItemMeta: { ...type.caption, color: neutral.inkMuted, marginTop: 2 },
+  drawerSectionHeader: { ...type.caption, color: neutral.inkMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, paddingHorizontal: 4, paddingBottom: 4, paddingTop: 2 },
+  drawerItemRemote: { borderLeftWidth: 2, borderLeftColor: '#FBBF24' },
   drawerHint: { ...type.caption, color: neutral.inkMuted, textAlign: 'center', padding: space.sm, fontStyle: 'italic' },
 
   sheetPanel: {
