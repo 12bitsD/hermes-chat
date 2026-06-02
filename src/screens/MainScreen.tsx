@@ -8,6 +8,7 @@ import { neutral, type, space, radius, useTheme } from '../theme';
 import { ChatView } from '../components/chat/ChatView';
 import { PromptNavigator } from '../components/prompt-nav/PromptNavigator';
 import { SettingsPanel } from '../components/SettingsPanel';
+import { SakuraRain } from '../components/SakuraRain';
 import { useAppStore } from '../store/app';
 import { getLLMClient } from '../store/persistence';
 import { isNarrow, isNative, watchScreen } from '../utils/platform';
@@ -63,6 +64,9 @@ export const MainScreen: React.FC = () => {
     <View style={[styles.root, { paddingTop: isNative ? insets.top : 0 }]}>
       <StatusBar barStyle="dark-content" backgroundColor={neutral.bg} />
 
+      {/* ── Ambient sakura petal rain — pointerEvents none, never blocks input ── */}
+      <SakuraRain count={isNarrow ? 8 : 14} opacity={0.22} />
+
       {/* ── App bar ─────────────────────────────────────────────────── */}
       <View style={[styles.appBar, { backgroundColor: neutral.bg, borderBottomColor: neutral.border }]}>
         {narrow ? (
@@ -87,9 +91,12 @@ export const MainScreen: React.FC = () => {
             style={styles.titlePress}
             onPress={() => { if (active) { haptic('light'); setDraftTitle(active.title); setEditingTitle(true); } }}
           >
-            <Text numberOfLines={1} style={styles.appBarTitle}>{active?.title ?? 'Hermes'}</Text>
+            <View style={styles.titleRow}>
+              <Text numberOfLines={1} style={styles.appBarTitle}>🌸 {active?.title ?? 'Hermes'}</Text>
+              <Text style={[styles.appBarSparkle, { color: accent.accent.fg }]}>✦</Text>
+            </View>
             <Text numberOfLines={1} style={styles.appBarSubtitle}>
-              {`${Object.keys(conversations).length} sessions`}
+              {`${Object.keys(conversations).length} sessions ♡`}
             </Text>
           </Pressable>
         )}
@@ -365,6 +372,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   appBarTitle: { ...type.title, color: neutral.ink, fontSize: 16 },
+  appBarSparkle: { fontSize: 12, marginLeft: 6, opacity: 0.8 },
+  titleRow: { flexDirection: 'row', alignItems: 'center' },
   appBarSubtitle: { ...type.caption, color: neutral.inkMuted, marginTop: 2 },
   appBarRight: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto' },
   iconBtn: {

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, ActionSheetIOS, Platform, Share, Clipboard } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActionSheetIOS, Platform, Share, Clipboard, Image } from 'react-native';
 import { neutral, type, space, radius, useTheme } from '../../theme';
 import { Message } from '../../types';
 import { FileCard } from './FileCard';
@@ -88,10 +88,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
 // ─── Mascot avatar ───────────────────────────────────────────────────────────
 
 const MascotAvatar: React.FC<{ small?: boolean }> = ({ small = false }) => {
-  const size = small ? 26 : 32;
+  const size = small ? 28 : 36;
   return (
     <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}>
-      <Text style={{ fontSize: size * 0.6 }}>🌸</Text>
+      <Image
+        source={require('../../../assets/illustrations/avatar.png')}
+        style={{ width: size, height: size, borderRadius: size / 2 }}
+        resizeMode="cover"
+      />
     </View>
   );
 };
