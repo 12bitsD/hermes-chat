@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Pressable, Image, Animated, Easing } from 'react-native';
 import { neutral, type, space, radius, useTheme } from '../../theme';
 import { isNarrow } from '../../utils/platform';
 
@@ -26,7 +26,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onPick }) => {
     <View style={styles.root}>
       {/* Hero with real anime mascot illustration */}
       <View style={styles.hero}>
-        <Text style={[styles.heroSparkleLeft, { color: accent.accent.fg }]}>✦</Text>
+        <SparkleRing color={accent.accent.fg} count={6} />
         <View style={[styles.mascotHalo, { borderColor: accent.accent.soft }]}>
           <Image
             source={require('../../../assets/illustrations/mascot.png')}
@@ -61,9 +61,65 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onPick }) => {
   );
 };
 
+/**
+ * SparkleRing — 6 ✦ / ✧ characters rotating slowly around a circular
+ * hero. Each is offset by 60° and bobs in/out. Pure ambient
+ * decoration; pointerEvents none so it never blocks the tap target
+ * underneath (the mascot itself).
+ */
+const SparkleRing: React.FC<{ color: string; count?: number }> = ({ color, count = 6 }) => {
+  const rotation = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(rotation, {
+        toValue: 1,
+        duration: 18000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [rotation]);
+
+  const rotate = rotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.ring,
+        { transform: [{ rotate }] },
+      ]}
+    >
+      {Array.from({ length: count }).map((_, i) => {
+        const angle = (i / count) * Math.PI * 2;
+        const radius = 92;
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+        const glyph = i % 2 === 0 ? '✦' : '✧';
+        return (
+          <Text
+            key={i}
+            style={[
+              styles.ringSparkle,
+              {
+                color,
+                transform: [{ translateX: x }, { translateY: y }, { rotate: `${-(i / count) * 360}deg` }],
+              },
+            ]}
+          >
+            {glyph}
+          </Text>
+        );
+      })}
+    </Animated.View>
+  );
+};
+
 const styles = StyleSheet.create({
   root: { flex: 1, padding: space.md, justifyContent: 'center' },
-  hero: { alignItems: 'center', marginBottom: space.xl },
+  hero: { alignItems: 'center', marginBottom: space.xl, position: 'relative' },
   mascotHalo: {
     width: 140, height: 140, borderRadius: 70, alignItems: 'center', justifyContent: 'center',
     marginBottom: space.md, borderWidth: 2, padding: 6, backgroundColor: neutral.surface,
@@ -74,6 +130,12 @@ const styles = StyleSheet.create({
   heroTitle: { ...type.hero, color: neutral.ink, fontSize: 28, marginBottom: 4 },
   heroSubtitle: { ...type.body, color: neutral.inkSoft, marginBottom: 6, textAlign: 'center' },
   heroHint: { ...type.caption, color: neutral.inkMuted },
+
+  ring: {
+    position: 'absolute', top: '50%', left: '50%',
+    width: 0, height: 0, alignItems: 'center', justifyContent: 'center',
+  },
+  ringSparkle: { position: 'absolute', fontSize: 16, opacity: 0.7 },
 
   suggestions: { gap: space.xs },
   suggestion: {
