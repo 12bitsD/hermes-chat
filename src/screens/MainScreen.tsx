@@ -117,6 +117,61 @@ export const MainScreen: React.FC = () => {
 
         <View style={styles.appBarRight}>
           {narrow ? (
+            <Pressable
+              hitSlop={12}
+              onPress={async () => {
+                if (!activeId) { haptic('warning'); return; }
+                haptic('light');
+                const cfg = {
+                  provider: 'hermes-gateway' as const,
+                  endpoint: settings.llmEndpoint || 'http://127.0.0.1:8642/v1/chat/completions',
+                  apiKey: settings.llmApiKey || undefined,
+                  defaultModel: settings.llmModel || 'default',
+                };
+                const { HermesSessionsClient } = await import('../services/llm/sessions-client');
+                const client = new HermesSessionsClient(cfg);
+                const msgs = await client.messages(activeId);
+                if (!msgs) { haptic('error'); return; }
+                // Merge remote messages into the active conversation
+                const existing = useAppStore.getState().conversations[activeId];
+                const byId = new Map<string, any>();
+                for (const m of existing?.messages ?? []) byId.set(m.id, m);
+                let added = 0;
+                for (const m of msgs as any[]) {
+                  if (!byId.has(m.id)) {
+                    byId.set(m.id, {
+                      id: m.id ?? `pull-${Math.random().toString(36).slice(2, 8)}`,
+                      role: m.role ?? 'user',
+                      content: typeof m.content === 'string' ? m.content : (m.text ?? ''),
+                      status: 'done' as const,
+                      createdAt: m.created_at ?? m.createdAt ?? Date.now(),
+                    });
+                    added += 1;
+                  }
+                }
+                if (added > 0) {
+                  useAppStore.setState((s) => ({
+                    conversations: {
+                      ...s.conversations,
+                      [activeId]: {
+                        ...(s.conversations[activeId] ?? existing!),
+                        id: activeId,
+                        messages: Array.from(byId.values()).sort((a: any, b: any) => a.createdAt - b.createdAt),
+                        updatedAt: Date.now(),
+                      },
+                    },
+                  }));
+                  haptic('success');
+                } else {
+                  haptic('warning');
+                }
+              }}
+              style={styles.iconBtn}
+            >
+              <Text style={[styles.iconBtnText, { color: accent.accent.fg }]}>🔄</Text>
+            </Pressable>
+          ) : null}
+          {narrow ? (
             <Pressable hitSlop={12} onPress={() => setPromptsOpen(true)} style={styles.iconBtn}>
               <Text style={[styles.iconBtnText, { color: accent.accent.fg }]}>✨</Text>
             </Pressable>
