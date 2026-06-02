@@ -108,6 +108,17 @@ export class HermesSessionsClient {
     } catch { return false; }
   }
 
+  async addMessage(id: string, role: 'user' | 'assistant' | 'system', content: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.base()}/sessions/${encodeURIComponent(id)}/messages`, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify({ role, content }),
+      } as RequestInit);
+      return res.ok;
+    } catch { return false; }
+  }
+
   async fork(id: string, signal?: AbortSignal): Promise<HermesSession | null> {
     try {
       const res = await fetch(`${this.base()}/sessions/${encodeURIComponent(id)}/fork`, {

@@ -404,6 +404,24 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
                 // user stopped — keep partial content, mark as done (not error)
                 updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
               }
+              // Mirror both new messages into the Hermes SessionDB so
+              // the computer (and any other device sharing this
+              // session id) sees the turn. Fire-and-forget — failure
+              // is not surfaced to the user; their conversation still
+              // works on the phone even if the gateway is offline.
+              if (settings.llmProvider === 'hermes-gateway') {
+                const { HermesSessionsClient } = require('../../services/llm') as typeof import('../../services/llm');
+                const client = new HermesSessionsClient({
+                  provider: 'hermes-gateway',
+                  endpoint: settings.llmEndpoint || 'http://127.0.0.1:8642/v1/chat/completions',
+                  apiKey: settings.llmApiKey || undefined,
+                  defaultModel: settings.llmModel || 'default',
+                });
+                // user message
+                client.addMessage(conversationId, 'user', text).catch(() => undefined);
+                // assistant reply (full)
+                client.addMessage(conversationId, 'assistant', acc).catch(() => undefined);
+              }
             },
             onError: (err) => {
               if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
