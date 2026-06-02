@@ -35,7 +35,7 @@ export const MainScreen: React.FC = () => {
   useEffect(() => {
     return watchScreen((win) => setNarrow(win.width < 768));
   }, []);
-
+  // Periodic provider reachability probe so the status dot stays honest
   const settings = useAppStore((s) => s.settings);
   const [providerOk, setProviderOk] = useState<boolean | null>(null);
   useEffect(() => {
@@ -158,6 +158,27 @@ export const MainScreen: React.FC = () => {
         />
       ) : null}
 
+      {/* ── Status bar — shows the live provider / runs-mode / reachability ── */}
+      <View style={[styles.statusBar, { borderTopColor: neutral.border, backgroundColor: neutral.surface }]}>
+        <View style={styles.statusLeft}>
+          <View style={[styles.statusBarDot, { backgroundColor: statusDotColorFor(settings.llmProvider, providerOk) }]} />
+          <Text style={styles.statusText}>
+            {settings.llmProvider === 'mock' ? '🧪 Mock' : (settings.llmProvider as string)}
+          </Text>
+          {providerOk === false && settings.llmProvider !== 'mock' ? (
+            <Text style={[styles.statusText, { color: neutral.err, marginLeft: 4 }]}>· offline</Text>
+          ) : providerOk === true && settings.llmProvider !== 'mock' ? (
+            <Text style={[styles.statusText, { color: neutral.ok, marginLeft: 4 }]}>· online</Text>
+          ) : null}
+          {(settings as any).useRunsMode ? (
+            <Text style={[styles.statusText, { marginLeft: 8, color: accent.accent.fg }]}>⚡ runs-mode</Text>
+          ) : null}
+        </View>
+        <Text style={styles.statusText}>
+          {Object.keys(conversations).length} sessions ♡
+        </Text>
+      </View>
+
       {/* ── Settings ────────────────────────────────────────────────── */}
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </View>
@@ -238,6 +259,12 @@ function statusDotColor(provider: 'mock' | 'hermes-gateway', ok: boolean | null)
   if (provider === 'mock') return { backgroundColor: neutral.inkMuted };
   if (ok === null) return { backgroundColor: neutral.inkMuted };
   return ok ? { backgroundColor: neutral.ok } : { backgroundColor: neutral.err };
+}
+
+function statusDotColorFor(provider: string, ok: boolean | null) {
+  if (provider === 'mock') return neutral.inkMuted;
+  if (ok === null) return neutral.inkMuted;
+  return ok ? neutral.ok : neutral.err;
 }
 
 // ─── Mobile drawer (sessions) ────────────────────────────────────────────────
@@ -438,4 +465,13 @@ const styles = StyleSheet.create({
   },
   sheetHandleWrap: { alignItems: 'center', paddingBottom: space.xs },
   sheetHandle: { width: 40, height: 4, backgroundColor: neutral.border, borderRadius: 2 },
+
+  statusBar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 12, paddingVertical: 4, borderTopWidth: StyleSheet.hairlineWidth,
+    gap: space.sm,
+  },
+  statusLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 },
+  statusBarDot: { width: 8, height: 8, borderRadius: 4, marginRight: 4 },
+  statusText: { ...type.caption, color: neutral.inkSoft, fontSize: 11 },
 });
