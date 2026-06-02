@@ -57,6 +57,11 @@ export const ChatView: React.FC = () => {
     runId: string; approvalId: string; prompt: string; tool: string; args: unknown;
   } | null>(null);
 
+  // Latest runId — held in a ref so onStop (and other imperative handlers)
+  // can reach it without threading through state. Stays empty outside
+  // an active /v1/runs run.
+  const activeRunIdRef = useRef<string | null>(null);
+
   const [input, setInput] = useState('');
   const [pendingFiles, setPendingFiles] = useState<PickedFile[]>([]);
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
@@ -265,6 +270,7 @@ export const ChatView: React.FC = () => {
             sessionKey,
             signal: ctrl.signal,
           });
+          activeRunIdRef.current = runId;
           for await (const ev of runs.subscribeEvents(runId, ctrl.signal)) {
             if (ctrl.signal.aborted) break;
             if (ev.event === 'message.delta') {
@@ -425,6 +431,7 @@ export const ChatView: React.FC = () => {
     } finally {
       setStreaming(false);
       abortRef.current = null;
+      activeRunIdRef.current = null;
     }
   }, [input, streaming, conversationId, appendMessage, updateMessage, pendingFiles, systemPrompt, maxTokens, sessionKey, settings.temperature, settings.llmEndpoint, settings.llmApiKey, settings.llmModel, useRunsMode]);
 
@@ -439,7 +446,23 @@ export const ChatView: React.FC = () => {
     [send],
   );
 
-  const onStop = () => { haptic('warning'); abortRef.current?.abort(); };
+  const onStop = useCallback(async () => {
+    haptic('warning');
+    abortRef.current?.abort();
+    if (useRunsMode && activeRunIdRef.current) {
+      try {
+        const { HermesRunsClient } = await import('../../services/llm');
+        const runs = new HermesRunsClient({
+          provider: 'hermes-gateway',
+          endpoint: (settings as any).llmEndpoint,
+          apiKey: (settings as any).llmApiKey,
+          defaultModel: (settings as any).llmModel,
+        });
+        await runs.stopRun(activeRunIdRef.current).catch(() => undefined);
+      } catch { /* ignore */ }
+      activeRunIdRef.current = null;
+    }
+  }, [useRunsMode, settings.llmEndpoint, settings.llmApiKey, settings.llmModel]);
 
   const pickImage = useCallback(async () => {
     // Try a document picker first (any file). If only the image picker is

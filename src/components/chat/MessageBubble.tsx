@@ -62,6 +62,26 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
           </View>
         ) : null}
 
+        {message.toolEvents && message.toolEvents.length > 0 ? (
+          <View style={styles.toolStrip}>
+            {message.toolEvents.map((t) => {
+              const dot = t.status === 'running' ? '◔' : t.status === 'error' ? '✕' : '✓';
+              const dotColor = t.status === 'running' ? '#007AFF' : t.status === 'error' ? '#DC2626' : '#16a34a';
+              const dur = t.durationMs != null ? ` · ${(t.durationMs / 1000).toFixed(2)}s` : '';
+              return (
+                <View key={t.id} style={styles.toolChip}>
+                  <Text style={[styles.toolDot, { color: dotColor }]}>{dot}</Text>
+                  <Text style={styles.toolName}>{t.tool}</Text>
+                  {dur ? <Text style={styles.toolDur}>{dur}</Text> : null}
+                  {t.preview ? (
+                    <Text style={styles.toolPreview} numberOfLines={2}>{t.preview}</Text>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+
         {blocks.length === 0 && !showCursor ? (
           !isUser ? <TypingDots /> : null
         ) : (
@@ -344,6 +364,15 @@ const styles = StyleSheet.create({
   },
 
   attachments: { marginBottom: 6 },
+  toolStrip: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 6 },
+  toolChip: {
+    backgroundColor: '#00000010', borderRadius: radius.sm,
+    paddingHorizontal: 8, paddingVertical: 4, maxWidth: '100%',
+  },
+  toolDot: { fontSize: 11, fontWeight: '700' },
+  toolName: { ...type.caption, color: neutral.ink, fontFamily: 'Courier' },
+  toolDur: { ...type.caption, color: neutral.inkMuted, fontSize: 10 },
+  toolPreview: { ...type.caption, color: neutral.inkSoft, fontSize: 10, marginTop: 2 },
 
   bold: { fontWeight: '600' },
   italic: { fontStyle: 'italic' },
