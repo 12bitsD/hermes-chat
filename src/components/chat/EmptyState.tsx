@@ -3,7 +3,7 @@
  * "open the app, drive the Hermes agent on my computer from my phone."
  *
  * Three blocks, in order:
- *   1. Hero illustration (mobile-hero.png) with status overlay
+ *   1. Hero illustration (remote-hero.png) with status overlay
  *   2. Live Hermes status card (idle / running / offline)
  *   3. Quick action grid: voice / photo / new session / open existing
  *
@@ -53,7 +53,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ status, statusDetail, on
         <SparkleRing color={accent.accent.fg} count={6} />
         <View style={[styles.heroImageBox, { backgroundColor: neutral.surface, borderColor: accent.accent.soft }]}>
           <Image
-            source={require('../../../assets/illustrations/mobile-hero.png')}
+            source={require('../../../assets/illustrations/remote-hero.png')}
             style={styles.heroImage}
             resizeMode="contain"
           />
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
 
   heroWrap: { alignItems: 'center', marginBottom: space.lg, position: 'relative' },
   heroImageBox: {
-    width: 180, height: 180, borderRadius: 24,
+    width: 220, height: 220, borderRadius: 24,
     borderWidth: 2, padding: 8, marginBottom: space.md,
   },
   heroImage: { width: '100%', height: '100%', borderRadius: 18 },
