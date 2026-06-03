@@ -21,15 +21,19 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@types/node": "^25.9.1",
     "@types/react": "~19.2.2",
     "eas-cli": "^20.0.0",
+    "tsx": "^4.22.4",
     "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "tsx tests/smoke.test.ts",
+    "test:watch": "tsx --watch tests/smoke.test.ts"
   },
   "private": true
 }

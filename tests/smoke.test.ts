@@ -1,0 +1,151 @@
+/**
+ * smoke.test.ts — Node-runnable smoke test for the highest-value pure
+ * logic modules in hermes-chat. Uses Node's built-in `node:test`
+ * runner (zero extra dependencies) and is invoked via:
+ *
+ *   npx tsx tests/smoke.test.ts
+ *
+ * What we test
+ * ────────────
+ *  1. domain/tools/risk — toolRiskLevel + describeToolIntent
+ *     (Phase 63 #10 logic that decides which approvals auto-pass)
+ *  2. chatSendBus / hermesCliBus — pub/sub round-trip
+ *     (Phase 60 #1 event infrastructure)
+ *  3. messageQueue — backoff math + cap constant
+ *     (Phase 62 #9 offline reliability)
+ *
+ * What we DON'T test (yet)
+ * ────────────────────────
+ *  - React components (need happy-dom or react-test-renderer)
+ *  - messageQueue AsyncStorage round-trip (needs RN runtime)
+ *  - Network calls (need fetch mock)
+ *
+ * Why node:test not jest
+ * ──────────────────────
+ *  - Zero new dev dependencies
+ *  - Works in any Node 20+ env
+ *  - Test files are pure ESM that import the source directly via tsx
+ *  - CI just runs `npx tsx tests/smoke.test.ts`
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { toolRiskLevel, describeToolIntent } from '../src/domain/tools/risk';
+import { publishCli, subscribeCli } from '../src/lib/hermesCliBus';
+import { dispatchChatSend, subscribeChatSend } from '../src/lib/chatSendBus';
+import { nextBackoffMs, QUEUE_MAX_RETRIES } from '../src/services/queue/messageQueue';
+
+// ─── 1. tool risk grading (Phase 63 #10) ─────────────────────────
+
+test('toolRiskLevel: high-risk tools are high', () => {
+  for (const t of ['shell', 'write_file', 'delete_file', 'send_email', 'http_post', 'git_push']) {
+    assert.equal(toolRiskLevel(t), 'high', `expected ${t} to be high`);
+  }
+});
+
+test('toolRiskLevel: low-risk tools are low', () => {
+  for (const t of ['read_file', 'web_search', 'list_dir', 'http_get', 'search']) {
+    assert.equal(toolRiskLevel(t), 'low', `expected ${t} to be low`);
+  }
+});
+
+test('toolRiskLevel: unknown tools default to high (deny-by-default)', () => {
+  for (const t of ['totally-unknown-tool', '', null, undefined, 'mystery']) {
+    assert.equal(toolRiskLevel(t as any), 'high', `expected ${String(t)} to default to high`);
+  }
+});
+
+test('toolRiskLevel: case-insensitive match', () => {
+  assert.equal(toolRiskLevel('SHELL'), 'high');
+  assert.equal(toolRiskLevel('Web_Search'), 'low');
+});
+
+test('describeToolIntent: known tools produce meaningful strings', () => {
+  assert.match(describeToolIntent('read_file', { path: '/tmp/x' }), /read.*\/tmp\/x/);
+  assert.match(describeToolIntent('web_search', { query: 'kawaii' }), /search.*kawaii/);
+  assert.match(describeToolIntent('shell', { cmd: 'ls -lah' }), /run.*ls -lah/);
+  assert.match(describeToolIntent('send_email', { to: 'mom' }), /email.*mom/);
+});
+
+test('describeToolIntent: unknown tool falls back to first string arg', () => {
+  assert.equal(describeToolIntent('foo', { bar: 'baz', qux: 42 } as any), 'baz');
+});
+
+// ─── 2. pub/sub infrastructure (Phase 60 #1) ────────────────────
+
+// The bus falls back to setTimeout(16) outside the browser, so we
+// wait that long for the flush.
+const NEXT_FRAME = () => new Promise((r) => setTimeout(r, 32));
+
+test('hermesCliBus: rAF-coalesces — last event in a frame wins', async () => {
+  const seen: any[] = [];
+  const unsub = subscribeCli((e) => seen.push(e));
+  publishCli({ type: 'message:added', message: {} as any, conversationId: 'c1' });
+  publishCli({ type: 'message:updated', messageId: 'm1', patch: {} as any, conversationId: 'c1' });
+  await NEXT_FRAME();
+  unsub();
+  // Both events were published in the same microtask tick; the
+  // rAF-coalesce collapsed them into a single dispatch (last wins).
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].type, 'message:updated');
+});
+
+test('hermesCliBus: separate frames produce separate events', async () => {
+  const seen: any[] = [];
+  const unsub = subscribeCli((e) => seen.push(e));
+  publishCli({ type: 'message:added', message: {} as any, conversationId: 'c1' });
+  await NEXT_FRAME();
+  publishCli({ type: 'run:started', runId: 'r1', conversationId: 'c1' });
+  await NEXT_FRAME();
+  unsub();
+  assert.equal(seen.length, 2);
+  assert.equal(seen[0].type, 'message:added');
+  assert.equal(seen[1].type, 'run:started');
+});
+
+test('hermesCliBus: unsubscribe stops further events', async () => {
+  const seen: any[] = [];
+  const unsub = subscribeCli((e) => seen.push(e));
+  publishCli({ type: 'message:added', message: {} as any, conversationId: 'c1' });
+  await NEXT_FRAME();
+  unsub();
+  publishCli({ type: 'message:added', message: {} as any, conversationId: 'c1' });
+  await NEXT_FRAME();
+  assert.equal(seen.length, 1);
+});
+
+test('chatSendBus: subscribe receives dispatch and returns ok', async () => {
+  const seen: any[] = [];
+  const unsub = subscribeChatSend(async (req) => {
+    seen.push(req);
+    return { ok: true };
+  });
+  const r = await dispatchChatSend({ text: 'hello' });
+  unsub();
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].text, 'hello');
+  assert.deepEqual(r, { ok: true });
+});
+
+test('chatSendBus: dispatch with no subscribers returns ok:false', async () => {
+  const r = await dispatchChatSend({ text: 'no listener' });
+  assert.equal(r.ok, false);
+  assert.match(r.reason ?? '', /no/);
+});
+
+// ─── 3. offline queue math (Phase 62 #9) ────────────────────────
+
+test('messageQueue: nextBackoffMs returns 1s/4s/16s then null', () => {
+  const mkEntry = (retries: number) => ({
+    id: 'x', conversationId: 'c', text: 't', files: [], createdAt: 0, retries,
+  });
+  assert.equal(nextBackoffMs(mkEntry(0) as any), 1000);
+  assert.equal(nextBackoffMs(mkEntry(1) as any), 4000);
+  assert.equal(nextBackoffMs(mkEntry(2) as any), 16000);
+  assert.equal(nextBackoffMs(mkEntry(3) as any), null);
+  assert.equal(nextBackoffMs(mkEntry(10) as any), null);
+});
+
+test('messageQueue: QUEUE_MAX_RETRIES matches design', () => {
+  assert.equal(QUEUE_MAX_RETRIES, 3);
+});
