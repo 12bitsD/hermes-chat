@@ -373,6 +373,11 @@ export function useChatController() {
     llmConfig,
   ]);
 
+  // Keep the bus subscriber's `send` ref pointing at the latest
+  // closure so it picks up the freshly created user message, abort
+  // controller, etc. on every send.
+  useEffect(() => { sendRef.current = send; }, [send]);
+
   const handleEditUserMessage = useCallback(async (messageId: string, newText: string) => {
     if (!conversationId || streaming) return;
     const trimmed = newText.trim();
