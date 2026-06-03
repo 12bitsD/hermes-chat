@@ -101,6 +101,72 @@ export function useChatController() {
     }
   }, [voiceOn]);
 
+  // Phase 66 #4: push-to-talk (mobile). startVoicePtt kicks off the
+  // same recording pipeline as toggleVoice; stopVoicePttAndSend
+  // stops recording and **sends the captured text immediately**,
+  // not just appends it to the composer. We use a 200ms short-press
+  // cancel window to avoid accidental short taps turning into
+  // empty sends.
+  const voicePttTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startVoicePtt = useCallback(async () => {
+    if (voiceOn) return;
+    if (voicePttTimerRef.current) {
+      clearTimeout(voicePttTimerRef.current);
+    }
+    // 200ms grace period — short presses are cancels, not starts.
+    // This avoids stray taps from triggering the long-press UI.
+    voicePttTimerRef.current = setTimeout(async () => {
+      voicePttTimerRef.current = null;
+      const ok = await requestVoicePermission();
+      if (!ok) {
+        Alert.alert('Voice input', 'Microphone permission was denied.');
+        return;
+      }
+      const stop = await startVoice(
+        (text, isFinal) => {
+          setVoicePartial(text);
+          if (isFinal) {
+            setInput((cur) => (cur ? cur + ' ' + text : text));
+            setVoicePartial('');
+          }
+        },
+        (err) => {
+          setVoiceOn(false);
+          setVoicePartial('');
+          Alert.alert('Voice input', err.message);
+        },
+      );
+      if (stop) {
+        voiceStopRef.current = stop;
+        setVoiceOn(true);
+        haptic('medium');
+      }
+    }, 200);
+  }, [voiceOn]);
+
+  const stopVoicePttAndSend = useCallback(async () => {
+    if (voicePttTimerRef.current) {
+      // Short press — cancel the pending start, do nothing.
+      clearTimeout(voicePttTimerRef.current);
+      voicePttTimerRef.current = null;
+      return;
+    }
+    if (!voiceOn) return;
+    voiceStopRef.current?.();
+    voiceStopRef.current = null;
+    setVoiceOn(false);
+    setVoicePartial('');
+    // Pull the current input (final text) and send it.
+    if (input.trim()) {
+      haptic('light');
+      // Defer one tick so the input state commit settles. Read
+      // the latest send closure from a ref to avoid the TDZ
+      // problem (send is defined further down in the hook).
+      const fn = sendRef.current;
+      if (fn) setTimeout(() => void fn(input, { appendUserMessage: true, files: [] }), 30);
+    }
+  }, [voiceOn, input]);
+
   useEffect(() => {
     return () => { voiceStopRef.current?.(); };
   }, []);
@@ -567,6 +633,8 @@ export function useChatController() {
     voicePartial,
     createConversation,
     toggleVoice,
+    startVoicePtt,
+    stopVoicePttAndSend,
     attachFile,
     removeFile,
     resolveApproval,

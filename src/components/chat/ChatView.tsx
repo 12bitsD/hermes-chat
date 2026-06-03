@@ -40,6 +40,8 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = () => {
     voicePartial,
     createConversation,
     toggleVoice,
+    startVoicePtt,
+    stopVoicePttAndSend,
     attachFile,
     removeFile,
     resolveApproval,
@@ -202,6 +204,8 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = () => {
             <ToolBtn
               emoji={voiceOn ? '⏹' : '🎙'}
               onPress={toggleVoice}
+              onPressIn={isMobile ? startVoicePtt : undefined}
+              onPressOut={isMobile ? stopVoicePttAndSend : undefined}
               onHaptic={haptic}
               active={voiceOn}
               activeColor={neutral.err}
@@ -453,7 +457,16 @@ const ToolBtn: React.FC<{
   active?: boolean;
   activeColor?: string;
   accessibilityLabel?: string;
-}> = ({ emoji, onPress, onHaptic, active, activeColor, accessibilityLabel }) => {
+  /**
+   * Optional press-in / press-out hooks. When provided, the button
+   * also exposes the gesture lifecycle (used for push-to-talk on
+   * the voice button — onPressIn starts recording, onPressOut
+   * commits and sends). The existing onPress still fires on a
+   * normal tap, so this is backward-compatible.
+   */
+  onPressIn?: () => void;
+  onPressOut?: () => void;
+}> = ({ emoji, onPress, onHaptic, active, activeColor, accessibilityLabel, onPressIn, onPressOut }) => {
   const scale = useRef(new Animated.Value(1)).current;
   const [focused, setFocused] = useState(false);
 
@@ -469,8 +482,12 @@ const ToolBtn: React.FC<{
   const handlePressIn = () => {
     animateTo(0.86);
     onHaptic?.('light');
+    onPressIn?.();
   };
-  const handlePressOut = () => animateTo(1);
+  const handlePressOut = () => {
+    animateTo(1);
+    onPressOut?.();
+  };
 
   const activeBg = active ? (activeColor ?? neutral.err) : null;
 
