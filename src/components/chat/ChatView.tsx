@@ -49,6 +49,7 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
   const messages = useAppStore((s) => s.getActiveMessages());
   const appendMessage = useAppStore((s) => s.appendMessage);
   const updateMessage = useAppStore((s) => s.updateMessage);
+  const truncateMessagesAt = useAppStore((s) => s.truncateMessagesAt);
   const createConv = useAppStore((s) => s.createConversation);
   const providerOk = useAppStore((s) => s.gatewayReachable);
   const settings = useAppStore((s) => s.settings);
@@ -511,6 +512,29 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
     }
   }, [input, streaming, conversationId, appendMessage, updateMessage, pendingFiles, systemPrompt, maxTokens, sessionKey, settings.temperature, settings.llmEndpoint, settings.llmApiKey, settings.llmModel, useRunsMode]);
 
+  // Edit & resend: drop everything from this user message onward,
+  // rewrite the message in place, then re-send as a fresh turn. We
+  // do this through send() rather than the assistant pipeline so the
+  // new text goes through the full prompt assembly (system prompt,
+  // attachments, conversation history) exactly like a normal send.
+  const handleEditUserMessage = useCallback(async (messageId: string, newText: string) => {
+    if (!conversationId || streaming) return;
+    const trimmed = newText.trim();
+    if (!trimmed) return;
+    haptic('light');
+    truncateMessagesAt(conversationId, messageId);
+    updateMessage(conversationId, messageId, {
+      content: trimmed,
+      status: 'done',
+    });
+    // Hand off to send() so the assistant turn gets re-built with
+    // the rewritten history. setTimeout(50) gives the truncate + patch
+    // above a chance to flush through zustand before send() reads the
+    // current state.
+    setInput(trimmed);
+    setTimeout(() => send(), 50);
+  }, [conversationId, streaming, truncateMessagesAt, updateMessage]);
+
   const onKeyPress = useCallback(
     (e: any) => {
       // Enter to send on web; mobile keyboards just insert a newline + Send button
@@ -626,6 +650,7 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
                   isLast={i === arr.length - 1}
                   onSyncToHermes={m.role !== 'user' ? syncFromHermes : undefined}
                   onSend={m.role !== 'user' ? (text) => { setInput(text); setTimeout(() => send(), 50); } : undefined}
+                  onEdit={m.role === 'user' ? (text) => handleEditUserMessage(m.id, text) : undefined}
                 />
               ))
           )}

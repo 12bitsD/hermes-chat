@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, ActionSheetIOS, Platform, Share, Clipboard, Image, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActionSheetIOS, Platform, Share, Clipboard, Image, Animated, Easing, TextInput } from 'react-native';
 import { neutral, type, space, radius, useTheme } from '../../theme';
 import { Message } from '../../types';
 import { FileCard } from './FileCard';
@@ -12,12 +12,18 @@ export interface MessageBubbleProps {
   isLast: boolean;
   onSyncToHermes?: () => void;
   onSend?: (text: string) => void;
+  onEdit?: (newText: string) => void;
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message, isLast, onSyncToHermes, onSend }) => {
+export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message, isLast, onSyncToHermes, onSend, onEdit }) => {
   const accent = useTheme();
   const blocks = useMemo(() => parseMarkdown(message.content), [message.content]);
   const [expanded, setExpanded] = useState<number | null>(null);
+  // Edit mode is only used for user bubbles. We swap the rendered text
+  // for a TextInput + Save/Cancel bar; on Save we call onEdit(text)
+  // which the parent uses to truncate messages and re-send.
+  const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState(message.content);
 
   const isUser = message.role === 'user';
   const showCursor = message.status === 'streaming';
@@ -25,20 +31,29 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
   const onLongPress = useCallback(() => {
     haptic('medium');
     if (Platform.OS === 'ios') {
-      const opts = isUser
-        ? ['Copy', 'Share', 'Speak', 'Cancel']
-        : onSyncToHermes
-          ? ['Copy', 'Share', 'Speak', '📡 Sync from Hermes', 'Regenerate', 'Cancel']
-          : ['Copy', 'Share', 'Speak', 'Regenerate', 'Cancel'];
+      // iOS gets a real action sheet. We only offer Edit on user
+      // bubbles because re-sending an assistant turn would change the
+      // role of this message and break sync ordering.
+      const baseUser = onEdit ? ['Edit', 'Copy', 'Share', 'Speak', 'Cancel'] : ['Copy', 'Share', 'Speak', 'Cancel'];
+      const baseAsst = onSyncToHermes
+        ? ['Copy', 'Share', 'Speak', '📡 Sync from Hermes', 'Regenerate', 'Cancel']
+        : ['Copy', 'Share', 'Speak', 'Regenerate', 'Cancel'];
+      const opts = isUser ? baseUser : baseAsst;
       const cancelIdx = opts.length - 1;
-      const regenIdx  = onSyncToHermes ? 4 : 3;
-      const syncIdx   = onSyncToHermes ? 3 : -1;
+      const editIdx   = (isUser && onEdit) ? 0 : -1;
+      const regenIdx  = isUser ? -1 : (onSyncToHermes ? 4 : 3);
+      const syncIdx   = isUser ? -1 : (onSyncToHermes ? 3 : -1);
+      // Offsets shift when Edit is the first option.
+      const copyIdx   = editIdx >= 0 ? 1 : 0;
+      const shareIdx  = editIdx >= 0 ? 2 : 1;
+      const speakIdx  = editIdx >= 0 ? 3 : 2;
       ActionSheetIOS.showActionSheetWithOptions(
         { options: opts, cancelButtonIndex: cancelIdx, destructiveButtonIndex: undefined },
         (idx) => {
-          if (idx === 0) Clipboard.setString(message.content);
-          else if (idx === 1) Share.share({ message: message.content }).catch(() => {});
-          else if (idx === 2) speak(message.content);
+          if (idx === editIdx && onEdit) { haptic('light'); setEditing(true); return; }
+          if (idx === copyIdx) Clipboard.setString(message.content);
+          else if (idx === shareIdx) Share.share({ message: message.content }).catch(() => {});
+          else if (idx === speakIdx) speak(message.content);
           else if (idx === syncIdx && onSyncToHermes) { haptic('light'); onSyncToHermes(); }
           else if (idx === regenIdx) haptic('warning');
         },
@@ -47,7 +62,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
       // Android / web: copy and let the user long-press the system paste menu for more
       Clipboard.setString(message.content);
     }
-  }, [message.content, isUser, onSyncToHermes]);
+  }, [message.content, isUser, onSyncToHermes, onEdit]);
 
   return (
     <View style={[styles.row, isUser ? styles.rowUser : styles.rowAssistant]}>
@@ -97,23 +112,67 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
           </View>
         ) : null}
 
-        {blocks.length === 0 && !showCursor ? (
-          !isUser ? <TypingDots /> : null
+        {isUser && editing ? (
+          <View>
+            <TextInput
+              value={editDraft}
+              onChangeText={setEditDraft}
+              multiline
+              autoFocus
+              style={styles.editInput}
+              placeholderTextColor={neutral.inkMuted}
+            />
+            <View style={styles.editBar}>
+              <Pressable
+                onPress={() => { setEditing(false); setEditDraft(message.content); haptic('light'); }}
+                hitSlop={6}
+                style={[styles.editBtn, { backgroundColor: 'transparent', borderColor: neutral.border }]}
+              >
+                <Text style={[styles.editBtnText, { color: neutral.ink }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  const next = editDraft.trim();
+                  if (!next || !onEdit) { haptic('error'); return; }
+                  setEditing(false);
+                  onEdit(next);
+                }}
+                hitSlop={6}
+                style={[styles.editBtn, { backgroundColor: accent.accent.fg }]}
+              >
+                <Text style={[styles.editBtnText, { color: '#fff' }]}>Save & resend</Text>
+              </Pressable>
+            </View>
+          </View>
         ) : (
-          blocks.map((b, i) => <Block key={i} block={b} isUser={isUser} />)
+          <>
+            {blocks.length === 0 && !showCursor ? (
+              !isUser ? <TypingDots /> : null
+            ) : (
+              blocks.map((b, i) => <Block key={i} block={b} isUser={isUser} />)
+            )}
+            {showCursor ? <Cursor isUser={isUser} /> : null}
+            {isLast && message.status === 'done' ? (
+              <Text style={[styles.heartbeat, isUser ? styles.heartbeatUser : [styles.heartbeatAssistant, { color: neutral.inkMuted }]]}>✓</Text>
+            ) : null}
+            {message.status === 'error' ? <Text style={styles.errMark}>⚠ error</Text> : null}
+            {!isUser && message.status === 'done' && isLast && onSend ? (
+              <QuickReplies
+                onPick={(text) => { haptic('light'); onSend(text); }}
+                content={message.content}
+              />
+            ) : null}
+            {isUser && onEdit && Platform.OS !== 'ios' ? (
+              <Pressable
+                onPress={() => { setEditing(true); haptic('light'); }}
+                hitSlop={6}
+                style={styles.editInlineBtn}
+              >
+                <Text style={styles.editInlineText}>✏️ Edit</Text>
+              </Pressable>
+            ) : null}
+          </>
         )}
-
-        {showCursor ? <Cursor isUser={isUser} /> : null}
-        {isLast && message.status === 'done' ? (
-          <Text style={[styles.heartbeat, isUser ? styles.heartbeatUser : [styles.heartbeatAssistant, { color: neutral.inkMuted }]]}>✓</Text>
-        ) : null}
-        {message.status === 'error' ? <Text style={styles.errMark}>⚠ error</Text> : null}
-        {!isUser && message.status === 'done' && isLast && onSend ? (
-          <QuickReplies
-            onPick={(text) => { haptic('light'); onSend(text); }}
-            content={message.content}
-          />
-        ) : null}
       </View>
     </View>
   );
@@ -576,6 +635,23 @@ const styles = StyleSheet.create({
   heartbeatUser: { color: '#ffffffcc', alignSelf: 'flex-end' },
   heartbeatAssistant: { alignSelf: 'flex-end' },
   errMark: { color: neutral.err, fontSize: 11, marginTop: 2, fontWeight: '600' },
+  editInput: {
+    ...type.body,
+    color: '#000',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    minHeight: 40,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: '#FFB6C1',
+  },
+  editBar: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 6 },
+  editBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, borderWidth: 1 },
+  editBtnText: { ...type.caption, fontSize: 12, fontWeight: '700' },
+  editInlineBtn: { alignSelf: 'flex-end', marginTop: 4, paddingHorizontal: 4, paddingVertical: 2 },
+  editInlineText: { ...type.captionSm, fontSize: 11, color: '#ffffffcc', fontStyle: 'italic' },
 
   typingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, height: 44, paddingLeft: 0 },
   thinkingWrap: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', position: 'relative' },

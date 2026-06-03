@@ -23,6 +23,10 @@ interface AppState {
   renameConversation: (id: string, title: string) => void;
   appendMessage: (conversationId: string, message: Message) => void;
   updateMessage: (conversationId: string, messageId: string, patch: Partial<Message>) => void;
+  /** Drop a message and everything after it. Used by 'Edit & resend' to
+   *  reset a turn from a chosen point. Returns the index of the kept
+   *  boundary (length of the new array). */
+  truncateMessagesAt: (conversationId: string, messageId: string) => number;
   /** Import a remote Hermes session as a local conversation (id is mirrored). */
   importRemoteSession: (sessionId: string, title: string, messages: any[]) => void;
   clearMessages: (conversationId: string) => void;
@@ -259,6 +263,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!c) return {};
       return { conversations: { ...s.conversations, [conversationId]: { ...c, messages: [], updatedAt: now() } } };
     }),
+
+  truncateMessagesAt: (conversationId, messageId) => {
+    let kept = 0;
+    set((s) => {
+      const c = s.conversations[conversationId];
+      if (!c) return {};
+      const idx = c.messages.findIndex((m) => m.id === messageId);
+      if (idx < 0) return {};
+      // Keep the message at idx (so we can patch its content) and drop
+      // everything after. This preserves sync ordering and lets the
+      // caller rewrite this message and re-send a fresh assistant turn.
+      kept = idx + 1;
+      return {
+        conversations: {
+          ...s.conversations,
+          [conversationId]: { ...c, messages: c.messages.slice(0, kept), updatedAt: now() },
+        },
+      };
+    });
+    return kept;
+  },
 
   addPrompt: (p) => {
     const id = uid();
