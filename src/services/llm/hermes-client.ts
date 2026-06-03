@@ -88,7 +88,11 @@ export class HermesGatewayClient implements LLMClient {
         method: 'POST',
         headers: { ...this.headers({ accept: 'application/json' }), ...this.sessionHeaders(ctx) },
         body: JSON.stringify(body),
-        signal: req.signal,
+        // Hermes's aiohttp gateway can hang the first POST after restart
+        // or under upstream load. A 60s ceiling lets the user see "slow"
+        // instead of staring at a frozen chat forever. Pass-through
+        // req.signal still wins if the user hits Stop.
+        signal: req.signal ?? AbortSignal.timeout(60000),
       } as RequestInit);
     } catch (e: any) {
       // Network failure — the most common case on mobile
@@ -177,8 +181,19 @@ export class HermesGatewayClient implements LLMClient {
   }
 
   /** Hermes-specific session headers. Sent on every request when the
-   *  conversation has a stable id so the gateway can stitch a thread. */
+   *  conversation has a stable id so the gateway can stitch a thread.
+   *
+   *  On web, the Hermes gateway's CORS allowlist only includes
+   *  `Authorization, Content-Type, Idempotency-Key` — custom headers
+   *  trigger a preflight that gets rejected with 403, which the
+   *  browser surfaces as a generic `TypeError: Failed to fetch`.
+   *  Skipping these headers on web is the smallest workaround until
+   *  the gateway is updated to allow `X-Hermes-Session-*`. Native
+   *  (iOS/Android) requests aren't subject to CORS so the headers
+   *  are safe to send. We detect web via `typeof document`. */
   private sessionHeaders(ctx: HermesRequestContext): Record<string, string> {
+    const isWeb = typeof document !== 'undefined';
+    if (isWeb) return {};
     const h: Record<string, string> = {};
     if (ctx.sessionId) h['X-Hermes-Session-Id'] = ctx.sessionId;
     if (ctx.sessionKey) h['X-Hermes-Session-Key'] = ctx.sessionKey;

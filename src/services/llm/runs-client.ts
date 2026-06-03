@@ -224,8 +224,13 @@ export class HermesRunsClient {
       Accept: 'text/event-stream',
     };
     if (this.config.apiKey) h.Authorization = `Bearer ${this.config.apiKey}`;
-    if (req.sessionId) h['X-Hermes-Session-Id'] = req.sessionId;
-    if (req.sessionKey) h['X-Hermes-Session-Key'] = req.sessionKey;
+    // Same CORS-allowlist reason as HermesGatewayClient.sessionHeaders:
+    // Hermes's gateway rejects preflight if it sees X-Hermes-Session-* on
+    // a web origin. Skip on web; native platforms are fine.
+    if (typeof document === 'undefined') {
+      if (req.sessionId) h['X-Hermes-Session-Id'] = req.sessionId;
+      if (req.sessionKey) h['X-Hermes-Session-Key'] = req.sessionKey;
+    }
     return h;
   }
 }
