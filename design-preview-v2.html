@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hermes Chat — 二次元浓度升级版</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      color: #fff; 
+      padding: 60px 40px;
+      min-height: 100vh;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { 
+      font-size: 48px; 
+      font-weight: 800;
+      margin-bottom: 8px;
+      background: linear-gradient(90deg, #ff6b9d, #c084fc, #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 40px rgba(255, 107, 157, 0.3);
+    }
+    .subtitle { 
+      color: #94a3b8; 
+      margin-bottom: 60px; 
+      font-size: 18px;
+      font-weight: 400;
+    }
+    .section-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 32px;
+      margin-top: 60px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .grid { 
+      display: grid; 
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); 
+      gap: 32px;
+      margin-bottom: 60px;
+    }
+    .card {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 20px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: all 0.4s ease;
+      backdrop-filter: blur(10px);
+    }
+    .card:hover {
+      border-color: rgba(255, 107, 157, 0.5);
+      transform: translateY(-8px) scale(1.02);
+      box-shadow: 0 20px 40px rgba(255, 107, 157, 0.2);
+    }
+    .card-image {
+      width: 100%;
+      height: 320px;
+      object-fit: cover;
+      display: block;
+    }
+    .card-body {
+      padding: 20px;
+    }
+    .card-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .card-desc {
+      font-size: 13px;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+    .card-tags {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+    .tag {
+      font-size: 11px;
+      padding: 4px 10px;
+      background: rgba(255, 107, 157, 0.2);
+      color: #ff6b9d;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 107, 157, 0.3);
+    }
+    .icon-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 20px;
+    }
+    .icon-card {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: all 0.3s ease;
+    }
+    .icon-card:hover {
+      border-color: rgba(192, 132, 252, 0.5);
+      transform: translateY(-4px);
+      background: rgba(255, 255, 255, 0.1);
+    }
+    .icon-wrapper {
+      width: 64px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, rgba(255, 107, 157, 0.2) 0%, rgba(192, 132, 252, 0.2) 100%);
+      border-radius: 16px;
+    }
+    .icon-wrapper img {
+      width: 36px;
+      height: 36px;
+    }
+    .icon-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: #fff;
+      text-align: center;
+    }
+    .palette {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+    .swatch {
+      width: 64px;
+      height: 64px;
+      border-radius: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 6px;
+      transition: all 0.3s ease;
+    }
+    .swatch:hover {
+      transform: scale(1.1);
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+    .swatch-label {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.8);
+      text-align: center;
+      font-weight: 600;
+    }
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 40px;
+    }
+    .comparison-card {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 20px;
+      padding: 32px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .comparison-card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: #ff6b9d;
+    }
+    .comparison-card p {
+      font-size: 14px;
+      color: #94a3b8;
+      line-height: 1.8;
+    }
+    .highlight {
+      color: #ff6b9d;
+      font-weight: 600;
+    }
+    .glow {
+      text-shadow: 0 0 20px rgba(255, 107, 157, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌸 Hermes Chat — 二次元浓度升级</h1>
+    <p class="subtitle">白发理工少女 · 赛博朋克 · 樱花飘落 · kawaii 100%</p>
+    
+    <div class="section-title">✨ 新版插画（高浓度二次元）</div>
+    <div class="grid">
+      <div class="card">
+        <img src="src/assets/illustrations-v2/hero-magical.png" class="card-image" alt="Hero Magical">
+        <div class="card-body">
+          <div class="card-name">✨ hero-magical.png</div>
+          <div class="card-desc">白发长发 · 未来科技实验服 · 全息投影 · 樱花飘落 · 魔法少女姿势</div>
+          <div class="card-tags">
+            <span class="tag">魔法少女</span>
+            <span class="tag">全息科技</span>
+            <span class="tag">樱花</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <img src="src/assets/illustrations-v2/hero-twins.png" class="card-image" alt="Hero Twins">
+        <div class="card-body">
+          <div class="card-name">🎀 hero-twins.png</div>
+          <div class="card-desc">白发双马尾 · 蝴蝶结 · 电路图案卫衣 · 猫耳耳机 · 星星闪烁</div>
+          <div class="card-tags">
+            <span class="tag">双马尾</span>
+            <span class="tag">猫耳</span>
+            <span class="tag">kawaii</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <img src="src/assets/illustrations-v2/hero-cyber.png" class="card-image" alt="Hero Cyber">
+        <div class="card-body">
+          <div class="card-name">💎 hero-cyber.png</div>
+          <div class="card-desc">白发短发 · 发光眼镜 · 赛博朋克风格 · 代码浮动 · 酷帅 pose</div>
+          <div class="card-tags">
+            <span class="tag">赛博朋克</span>
+            <span class="tag">酷帅</span>
+            <span class="tag">代码</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <img src="src/assets/illustrations-v2/hero-maid.png" class="card-image" alt="Hero Maid">
+        <div class="card-body">
+          <div class="card-name">🎀 hero-maid.png</div>
+          <div class="card-desc">白发花饰 · 女仆装 + 科技配件 · 茶点托盘 · 樱花背景 · 甜美微笑</div>
+          <div class="card-tags">
+            <span class="tag">女仆装</span>
+            <span class="tag">茶点</span>
+            <span class="tag">甜美</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <img src="src/assets/illustrations-v2/hero-cozy.png" class="card-image" alt="Hero Cozy">
+        <div class="card-body">
+          <div class="card-name">🌙 hero-cozy.png</div>
+          <div class="card-desc">白发马尾 · 宽松毛衣 · 深夜编程 · 多屏幕 · 猫咪陪伴 · 温馨氛围</div>
+          <div class="card-tags">
+            <span class="tag">深夜</span>
+            <span class="tag">猫咪</span>
+            <span class="tag">温馨</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="section-title">🎯 Anthropic 风格 Icon</div>
+    <div class="icon-grid">
+      <div class="icon-card">
+        <div class="icon-wrapper">
+          <img src="src/assets/icons/icon-voice.svg" alt="Voice">
+        </div>
+        <span class="icon-name">icon-voice</span>
+      </div>
+      
+      <div class="icon-card">
+        <div class="icon-wrapper">
+          <img src="src/assets/icons/icon-photo.svg" alt="Photo">
+        </div>
+        <span class="icon-name">icon-photo</span>
+      </div>
+      
+      <div class="icon-card">
+        <div class="icon-wrapper">
+          <img src="src/assets/icons/icon-new-chat.svg" alt="New Chat">
+        </div>
+        <span class="icon-name">icon-new-chat</span>
+      </div>
+      
+      <div class="icon-card">
+        <div class="icon-wrapper">
+          <img src="src/assets/icons/icon-recent.svg" alt="Recent">
+        </div>
+        <span class="icon-name">icon-recent</span>
+      </div>
+      
+      <div class="icon-card">
+        <div class="icon-wrapper">
+          <img src="src/assets/icons/icon-send.svg" alt="Send">
+        </div>
+        <span class="icon-name">icon-send</span>
+      </div>
+      
+      <div class="icon-card">
+        <div class="icon-wrapper">
+          <img src="src/assets/icons/icon-settings.svg" alt="Settings">
+        </div>
+        <span class="icon-name">icon-settings</span>
+      </div>
+      
+      <div class="icon-card">
+        <div class="icon-wrapper">
+          <img src="src/assets/icons/icon-hermes.svg" alt="Hermes">
+        </div>
+        <span class="icon-name">icon-hermes</span>
+      </div>
+    </div>
+    
+    <div class="section-title">🎨 赛博朋克色板</div>
+    <div class="palette">
+      <div class="swatch" style="background: linear-gradient(135deg, #ff6b9d 0%, #c084fc 100%);">
+        <span class="swatch-label">樱花粉</span>
+      </div>
+      <div class="swatch" style="background: linear-gradient(135deg, #c084fc 0%, #60a5fa 100%);">
+        <span class="swatch-label">赛博蓝</span>
+      </div>
+      <div class="swatch" style="background: linear-gradient(135deg, #60a5fa 0%, #34d399 100%);">
+        <span class="swatch-label">科技绿</span>
+      </div>
+      <div class="swatch" style="background: linear-gradient(135deg, #fbbf24 0%, #f97316 100%);">
+        <span class="swatch-label">夕阳橙</span>
+      </div>
+      <div class="swatch" style="background: linear-gradient(135deg, #a78bfa 0%, #818cf8 100%);">
+        <span class="swatch-label">梦幻紫</span>
+      </div>
+      <div class="swatch" style="background: linear-gradient(135deg, #f472b6 0%, #fb7185 100%);">
+        <span class="swatch-label">可爱粉</span>
+      </div>
+    </div>
+    
+    <div class="section-title">✨ 二次元浓度对比</div>
+    <div class="comparison">
+      <div class="comparison-card">
+        <h3>之前（v1）</h3>
+        <p>
+          <span class="highlight">0 张</span> 美少女插画<br>
+          普通 Anthropic 风格 icon<br>
+          温暖中性色（米色、珊瑚）<br>
+          简洁、专业、<span class="highlight">general</span>
+        </p>
+      </div>
+      <div class="comparison-card">
+        <h3>现在（v2）</h3>
+        <p>
+          <span class="highlight glow">5 张</span> 高浓度二次元插画<br>
+          白发理工少女 × 各种场景<br>
+          赛博朋克色板（樱花粉、赛博蓝）<br>
+          <span class="highlight glow">kawaii 100%</span> · 樱花飘落 · 猫耳 · 双马尾
+        </p>
+      </div>
+    </div>
+    
+    <div style="margin-top: 60px; padding: 40px; background: rgba(255, 255, 255, 0.05); border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.1);">
+      <div class="section-title" style="margin-top: 0;">🎯 二次元浓度提升清单</div>
+      <div style="font-size: 15px; line-height: 2; color: #94a3b8;">
+        <p>✅ <span class="highlight">白发</span> — 所有插画统一白发银发</p>
+        <p>✅ <span class="highlight">理工少女</span> — 实验服、编程、科技配件</p>
+        <p>✅ <span class="highlight">双马尾/马尾</span> — 经典二次元发型</p>
+        <p>✅ <span class="highlight">猫耳耳机</span> — kawaii 元素</p>
+        <p>✅ <span class="highlight">赛博朋克</span> — 发光眼镜、全息投影、代码浮动</p>
+        <p>✅ <span class="highlight">樱花飘落</span> — 浪漫二次元氛围</p>
+        <p>✅ <span class="highlight">女仆装</span> — 经典二次元服饰</p>
+        <p>✅ <span class="highlight">猫咪陪伴</span> — 温馨感</p>
+        <p>✅ <span class="highlight">魔法少女姿势</span> — kawaii 动作</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

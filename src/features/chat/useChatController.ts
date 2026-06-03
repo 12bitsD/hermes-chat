@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Keyboard, Platform } from 'react-native';
 import { STICK_TO_BOTTOM_MS } from '../../config/app-constants';
+import { subscribeChatSend } from '../../lib/chatSendBus';
+import { publishCli } from '../../lib/hermesCliBus';
 import { buildChatHistory } from '../../domain/chat/history';
 import { makeAssistantMessage, makeUserMessage } from '../../domain/chat/messages';
 import { pickFile, type PickedFile } from '../attachments/filePicker';
@@ -118,6 +120,35 @@ export function useChatController() {
     };
   }, []);
 
+  // Subscribe to the `window.hermes.chat.send` bus. When a script
+  // outside React (devtools, Tampermonkey, another agent) calls
+  // `await hermes.chat.send('foo')`, the dispatch lands here and we
+  // hand off to the existing `send` callback. The bus returns a
+  // `{ok: true}` once we accept the request — the actual run state
+  // is published through hermesCliBus by the chatTurnService callbacks
+  // (tool:started, run:completed, etc.).
+  //
+  // We use a ref to read the latest `send` value inside the
+  // subscriber closure, so the bus is wired once on mount instead
+  // of re-subscribing on every render. The ref is initialised to
+  // null and filled in by the effect below (after `send` is defined).
+  const sendRef = useRef<((text: string, opts?: { appendUserMessage?: boolean; files?: PickedFile[] }) => Promise<void> | null)>(null);
+  const streamingRef = useRef(streaming);
+  streamingRef.current = streaming;
+  useEffect(() => {
+    return subscribeChatSend(async (req) => {
+      if (!conversationId) return { ok: false, reason: 'no-active-conversation' };
+      if (streamingRef.current) return { ok: false, reason: 'already-streaming' };
+      const text = (req.text ?? '').trim();
+      if (!text) return { ok: false, reason: 'empty-text' };
+      // Fire-and-forget — the bus caller wants immediate ack, not full turn.
+      const send = sendRef.current;
+      if (send) void send(text, { appendUserMessage: true, files: [] });
+      else return { ok: false, reason: 'controller-not-ready' };
+      return { ok: true };
+    });
+  }, [conversationId]);
+
   const scheduleStickToBottom = useCallback((stickToBottom: () => void) => {
     if (stickTimer.current) clearTimeout(stickTimer.current);
     stickTimer.current = setTimeout(stickToBottom, STICK_TO_BOTTOM_MS);
@@ -229,6 +260,7 @@ export function useChatController() {
           onRunStarted: (runId) => {
             activeRunIdRef.current = runId;
             activeRunStartedAtRef.current = Date.now();
+            publishCli({ type: 'run:started', conversationId, runId });
           },
           onTextFlush: (content) => {
             updateMessage(conversationId, assistantMsg.id, { content });
@@ -244,6 +276,7 @@ export function useChatController() {
             updateMessage(conversationId, assistantMsg.id, {
               toolEvents: [...getCurrentToolEvents(conversationId, assistantMsg.id), toolEv],
             });
+            publishCli({ type: 'tool:started', runId: event.runId, tool: event.tool, preview: event.preview });
           },
           onToolCompleted: (event) => {
             const existing = getCurrentToolEvents(conversationId, assistantMsg.id);
@@ -253,6 +286,13 @@ export function useChatController() {
                 : tool,
             );
             updateMessage(conversationId, assistantMsg.id, { toolEvents: updated });
+            publishCli({
+              type: 'tool:completed',
+              runId: activeRunIdRef.current ?? `${conversationId}-${Date.now()}`,
+              tool: event.tool,
+              durationMs: event.duration * 1000,
+              ok: !event.error,
+            });
           },
           onReasoning: (event) => {
             const existing = getCurrentToolEvents(conversationId, assistantMsg.id);
@@ -279,10 +319,19 @@ export function useChatController() {
               args: event.args,
             });
             updateMessage(conversationId, assistantMsg.id, { status: 'awaiting-approval' });
+            publishCli({
+              type: 'approval:required',
+              runId: event.runId,
+              approvalId: event.approvalId,
+              tool: event.tool,
+              prompt: event.prompt,
+            });
           },
           onDone: (finalText) => {
             updateMessage(conversationId, assistantMsg.id, { content: finalText, status: 'done' });
             haptic('success');
+            const runId = activeRunIdRef.current ?? `${conversationId}-${Date.now()}`;
+            publishCli({ type: 'run:completed', conversationId, runId, content: finalText });
           },
           onStopped: (finalText) => {
             updateMessage(conversationId, assistantMsg.id, { content: finalText, status: 'done' });
@@ -294,6 +343,8 @@ export function useChatController() {
               status: 'error',
             });
             haptic('error');
+            const runId = activeRunIdRef.current ?? `${conversationId}-${Date.now()}`;
+            publishCli({ type: 'run:failed', conversationId, runId, error: message });
           },
           onFallback: (error) => {
             console.warn('[runs mode] failed, falling back to chat completions', error);

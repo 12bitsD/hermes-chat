@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hermes Chat — v3 高质量二次元插画</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+      color: #fff; 
+      padding: 60px 40px;
+      min-height: 100vh;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { 
+      font-size: 48px; 
+      font-weight: 800;
+      margin-bottom: 8px;
+      background: linear-gradient(90deg, #ff6b9d, #c084fc, #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle { 
+      color: #94a3b8; 
+      margin-bottom: 60px; 
+      font-size: 18px;
+    }
+    .section-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 32px;
+      margin-top: 60px;
+      color: #fff;
+    }
+    .grid { 
+      display: grid; 
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); 
+      gap: 32px;
+    }
+    .card {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 20px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: all 0.4s ease;
+    }
+    .card:hover {
+      border-color: rgba(255, 107, 157, 0.5);
+      transform: translateY(-8px);
+      box-shadow: 0 20px 40px rgba(255, 107, 157, 0.2);
+    }
+    .card-image {
+      width: 100%;
+      height: 400px;
+      object-fit: cover;
+      display: block;
+    }
+    .card-body {
+      padding: 24px;
+    }
+    .card-name {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .card-desc {
+      font-size: 14px;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+    .card-tags {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+    .tag {
+      font-size: 12px;
+      padding: 6px 12px;
+      background: rgba(255, 107, 157, 0.2);
+      color: #ff6b9d;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 107, 157, 0.3);
+    }
+    .prompt-box {
+      margin-top: 16px;
+      padding: 16px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 11px;
+      color: #94a3b8;
+      line-height: 1.6;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .prompt-label {
+      font-size: 10px;
+      color: #60a5fa;
+      font-weight: 600;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 40px;
+    }
+    .comparison-card {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 20px;
+      padding: 32px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .comparison-card h3 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: #ff6b9d;
+    }
+    .comparison-card p {
+      font-size: 14px;
+      color: #94a3b8;
+      line-height: 1.8;
+    }
+    .highlight {
+      color: #ff6b9d;
+      font-weight: 600;
+    }
+    .tips {
+      margin-top: 60px;
+      padding: 40px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .tips h3 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      color: #60a5fa;
+    }
+    .tips ul {
+      list-style: none;
+      padding: 0;
+    }
+    .tips li {
+      font-size: 14px;
+      color: #94a3b8;
+      line-height: 2;
+      padding-left: 24px;
+      position: relative;
+    }
+    .tips li::before {
+      content: '✓';
+      position: absolute;
+      left: 0;
+      color: #34d399;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌸 Hermes Chat — v3 高质量二次元</h1>
+    <p class="subtitle">Booru tag 优化 · 艺术家风格参考 · 专业光影 · 角色一致性</p>
+    
+    <div class="section-title">✨ 新版插画（Booru tag 优化）</div>
+    <div class="grid">
+      <div class="card">
+        <img src="src/assets/illustrations-v3/hero-cyberpunk.png" class="card-image" alt="Hero Cyberpunk">
+        <div class="card-body">
+          <div class="card-name">🌃 hero-cyberpunk.png</div>
+          <div class="card-desc">赛博朋克风格 · 霓虹城市背景 · 体积光 · LAM 风格</div>
+          <div class="card-tags">
+            <span class="tag">赛博朋克</span>
+            <span class="tag">LAM 风格</span>
+            <span class="tag">霓虹灯</span>
+          </div>
+          <div class="prompt-box">
+            <div class="prompt-label">Prompt</div>
+            masterpiece, best quality, ultra-detailed, 1girl, solo, portrait, white hair, long silver hair flowing in wind, glowing blue eyes, sharp eyes, confident smile, futuristic headset with holographic display, techwear, high-collar white jacket with neon blue LED accents, black bodysuit underneath, fingerless gloves, upper body, looking at viewer, cool-toned lighting, rim lighting, neon city background at night, cyberpunk, detailed face, beautiful detailed eyes, anime coloring, pixiv illustration, LAM style, vibrant color, sharp focus, depth of field, bokeh, volumetric lighting
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <img src="src/assets/illustrations-v3/hero-kawaii.png" class="card-image" alt="Hero Kawaii">
+        <div class="card-body">
+          <div class="card-name">🎀 hero-kawaii.png</div>
+          <div class="card-desc">双马尾 · 猫耳耳机 · 温暖室内 · toi8 风格 · 黄金时刻</div>
+          <div class="card-tags">
+            <span class="tag">kawaii</span>
+            <span class="tag">toi8 风格</span>
+            <span class="tag">黄金时刻</span>
+          </div>
+          <div class="prompt-box">
+            <div class="prompt-label">Prompt</div>
+            masterpiece, best quality, highres, 1girl, solo, white hair, twin tails with blue ribbons, sparkling blue eyes, playful wink, cute cat ear headphones, wearing oversized tech company hoodie with circuit pattern, cozy, sitting cross-legged with laptop, warm indoor lighting, soft window light, golden hour, soft focus background, depth of field, bokeh, light novel illustration, anime coloring, detailed illustration, toi8 style, warm color palette, atmospheric, kawaii expression
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <img src="src/assets/illustrations-v3/hero-maid-sakura.png" class="card-image" alt="Hero Maid Sakura">
+        <div class="card-body">
+          <div class="card-name">🌸 hero-maid-sakura.png</div>
+          <div class="card-desc">女仆装 · 茶点 · 樱花飘落 · 京都动画风格 · 柔和阴影</div>
+          <div class="card-tags">
+            <span class="tag">女仆装</span>
+            <span class="tag">京都动画</span>
+            <span class="tag">樱花</span>
+          </div>
+          <div class="prompt-box">
+            <div class="prompt-label">Prompt</div>
+            masterpiece, best quality, ultra-detailed, 1girl, white hair, long hair with flower ornaments, gentle blue eyes, soft closed-mouth smile, wearing cute maid outfit with tech accessories, holding tray with tea and cookies, soft pink sakura background with petals falling, warm lighting, light novel illustration style, anime coloring, Kyoto Animation style, soft shading, detailed character, pastel color palette, kawaii, adorable, ethereal atmosphere
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <img src="src/assets/illustrations-v3/hero-cozy-night.png" class="card-image" alt="Hero Cozy Night">
+        <div class="card-body">
+          <div class="card-name">🌙 hero-cozy-night.png</div>
+          <div class="card-desc">深夜编程 · 猫咪陪伴 · 新海诚风格光影 · 温暖怀旧</div>
+          <div class="card-tags">
+            <span class="tag">新海诚风格</span>
+            <span class="tag">猫咪</span>
+            <span class="tag">温馨</span>
+          </div>
+          <div class="prompt-box">
+            <div class="prompt-label">Prompt</div>
+            masterpiece, best quality, highres, 1girl, white hair, low ponytail, wearing cozy oversized cream sweater, peaceful focused expression, coding on multiple glowing monitors, warm room with fairy lights, orange cat sleeping on desk, late night, warm amber desk lamp light, cool blue monitor glow, soft atmosphere, light novel illustration, anime coloring, Makoto Shinkai style lighting, detailed background, volumetric lighting, depth of field, bokeh, warm nostalgic color palette, cinematic
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="section-title">📊 v2 vs v3 对比</div>
+    <div class="comparison">
+      <div class="comparison-card">
+        <h3>v2（之前）</h3>
+        <p>
+          自然语言描述<br>
+          "anime girl, white hair, tech outfit"<br>
+          没有风格参考<br>
+          没有光影细节<br>
+          <span class="highlight">结果：general, 缺乏质感</span>
+        </p>
+      </div>
+      <div class="comparison-card">
+        <h3>v3（现在）</h3>
+        <p>
+          <span class="highlight">Booru tag 系统</span><br>
+          "masterpiece, best quality, 1girl"<br>
+          <span class="highlight">艺术家风格参考</span>（LAM, toi8, 京都动画, 新海诚）<br>
+          <span class="highlight">专业光影</span>（rim lighting, volumetric, golden hour）<br>
+          <span class="highlight">结果：高质量，有质感，风格统一</span>
+        </p>
+      </div>
+    </div>
+    
+    <div class="tips">
+      <h3>🎯 二次元插画 Prompt 技巧</h3>
+      <ul>
+        <li>用 Booru tag 而不是自然语言（masterpiece, best quality, 1girl）</li>
+        <li>引用具体艺术家风格（LAM, toi8, redjuice, 京都动画, 新海诚）</li>
+        <li>指定光影细节（rim lighting, volumetric light, golden hour）</li>
+        <li>描述服装要具体（techwear jacket with utility pockets）</li>
+        <li>指定构图和角度（upper body, looking at viewer, dynamic pose）</li>
+        <li>添加氛围元素（depth of field, bokeh, atmospheric）</li>
+        <li>使用负面提示排除低质量（lowres, bad anatomy, worst quality）</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>
