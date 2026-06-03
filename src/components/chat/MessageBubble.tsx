@@ -7,7 +7,7 @@ import { MessageTools } from './MessageTools';
 import { deriveMascotState, MASCOT_PNG, type MascotState } from './mascotState';
 import { isNarrow } from '../../utils/platform';
 import { haptic } from '../../utils/haptic';
-import { speak } from '../../utils/speak';
+import { speak, stopSpeaking } from '../../utils/speak';
 
 export interface MessageBubbleProps {
   message: Message;
@@ -29,6 +29,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
 
   const isUser = message.role === 'user';
   const showCursor = message.status === 'streaming';
+  const [speaking, setSpeaking] = useState(false);
 
   const onLongPress = useCallback(() => {
     haptic('medium');
@@ -148,11 +149,24 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
             {message.status === 'failed-queued' ? <Text style={styles.errMark}>❌ could not resend — tap to retry</Text> : null}
             {!isUser && message.status === 'done' && isLast ? (
               <Pressable
-                onPress={() => { haptic('light'); speak(message.content); }}
+                onPress={() => {
+                  haptic('light');
+                  if (speaking) {
+                    stopSpeaking();
+                    setSpeaking(false);
+                  } else {
+                    speak(message.content);
+                    setSpeaking(true);
+                    // Most TTS engines finish in <60s; auto-clear the
+                    // flag so the button doesn't get stuck "speaking"
+                    // if the engine doesn't fire a 'done' event.
+                    setTimeout(() => setSpeaking(false), 60_000);
+                  }
+                }}
                 hitSlop={6}
                 style={styles.editInlineBtn}
               >
-                <Text style={styles.editInlineText}>🔊 Read</Text>
+                <Text style={styles.editInlineText}>{speaking ? '⏹ Stop' : '🔊 Read'}</Text>
               </Pressable>
             ) : null}
             {!isUser && message.status === 'done' && isLast && onSend ? (
