@@ -34,27 +34,27 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
     if (Platform.OS === 'ios') {
       // iOS gets a real action sheet. We only offer Edit on user
       // bubbles because re-sending an assistant turn would change the
-      // role of this message and break sync ordering.
-      const baseUser = onEdit ? ['Edit', 'Copy', 'Share', 'Speak', 'Cancel'] : ['Copy', 'Share', 'Speak', 'Cancel'];
+      // role of this message and break sync ordering. Speak was
+      // removed in Phase 67 #6: the inline 🔊 Read button on the
+      // bubble itself is faster, cross-platform, and a11y-friendly.
+      const baseUser = onEdit ? ['Edit', 'Copy', 'Share', 'Cancel'] : ['Copy', 'Share', 'Cancel'];
       const baseAsst = onSyncToHermes
-        ? ['Copy', 'Share', 'Speak', '📡 Sync from Hermes', 'Regenerate', 'Cancel']
-        : ['Copy', 'Share', 'Speak', 'Regenerate', 'Cancel'];
+        ? ['Copy', 'Share', '📡 Sync from Hermes', 'Regenerate', 'Cancel']
+        : ['Copy', 'Share', 'Regenerate', 'Cancel'];
       const opts = isUser ? baseUser : baseAsst;
       const cancelIdx = opts.length - 1;
       const editIdx   = (isUser && onEdit) ? 0 : -1;
-      const regenIdx  = isUser ? -1 : (onSyncToHermes ? 4 : 3);
-      const syncIdx   = isUser ? -1 : (onSyncToHermes ? 3 : -1);
+      const regenIdx  = isUser ? -1 : (onSyncToHermes ? 3 : 2);
+      const syncIdx   = isUser ? -1 : (onSyncToHermes ? 2 : -1);
       // Offsets shift when Edit is the first option.
       const copyIdx   = editIdx >= 0 ? 1 : 0;
       const shareIdx  = editIdx >= 0 ? 2 : 1;
-      const speakIdx  = editIdx >= 0 ? 3 : 2;
       ActionSheetIOS.showActionSheetWithOptions(
         { options: opts, cancelButtonIndex: cancelIdx, destructiveButtonIndex: undefined },
         (idx) => {
           if (idx === editIdx && onEdit) { haptic('light'); setEditing(true); return; }
           if (idx === copyIdx) Clipboard.setString(message.content);
           else if (idx === shareIdx) Share.share({ message: message.content }).catch(() => {});
-          else if (idx === speakIdx) speak(message.content);
           else if (idx === syncIdx && onSyncToHermes) { haptic('light'); onSyncToHermes(); }
           else if (idx === regenIdx) haptic('warning');
         },
@@ -145,6 +145,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
             {message.status === 'error' ? <Text style={styles.errMark}>⚠ error</Text> : null}
             {message.status === 'queued' ? <Text style={styles.errMark}>⏳ queued</Text> : null}
             {message.status === 'failed-queued' ? <Text style={styles.errMark}>❌ could not resend — tap to retry</Text> : null}
+            {!isUser && message.status === 'done' && isLast ? (
+              <Pressable
+                onPress={() => { haptic('light'); speak(message.content); }}
+                hitSlop={6}
+                style={styles.editInlineBtn}
+              >
+                <Text style={styles.editInlineText}>🔊 Read</Text>
+              </Pressable>
+            ) : null}
             {!isUser && message.status === 'done' && isLast && onSend ? (
               <QuickReplies
                 onPick={(text) => { haptic('light'); onSend(text); }}
