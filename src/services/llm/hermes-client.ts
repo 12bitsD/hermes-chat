@@ -63,10 +63,21 @@ export class HermesGatewayClient implements LLMClient {
   }
 
   async streamChat(req: LLMStreamRequest, h: LLMStreamHandlers, ctx: HermesRequestContext = {}): Promise<void> {
+    // The Hermes gateway currently hangs on `stream: true` POSTs to
+    // /v1/chat/completions: aiohttp never flushes the first SSE chunk
+    // until the model is fully done, which on web means the browser's
+    // ReadableStream sits idle and the connection eventually times
+    // out. /v1/chat/completions with `stream: false` returns in ~5-15s
+    // and works reliably. To keep the streaming UX (the chat looks
+    // alive while the model thinks), we issue the request as non-
+    // streaming and *emit the response character-by-character on a
+    // timer*. The user sees the same animation; the wire format is
+    // simpler. Switch back to true streaming once the gateway
+    // implements chunked flush.
     const body = {
       model: req.model ?? this.config.defaultModel,
       messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
-      stream: true,
+      stream: false,
       ...(req.temperature != null ? { temperature: req.temperature } : {}),
       ...(req.maxTokens != null ? { max_tokens: req.maxTokens } : {}),
     };
@@ -75,7 +86,7 @@ export class HermesGatewayClient implements LLMClient {
     try {
       res = await fetch(this.config.endpoint, {
         method: 'POST',
-        headers: { ...this.headers(), ...this.sessionHeaders(ctx) },
+        headers: { ...this.headers({ accept: 'application/json' }), ...this.sessionHeaders(ctx) },
         body: JSON.stringify(body),
         signal: req.signal,
       } as RequestInit);
@@ -91,48 +102,35 @@ export class HermesGatewayClient implements LLMClient {
       return;
     }
 
-    let acc = '';
+    // Read the full body as JSON, then drip the content out chunked.
+    let full = '';
     try {
-      const reader = (res.body as ReadableStream<Uint8Array>).getReader();
-      const decoder = new TextDecoder('utf-8');
-      let sseBuf = '';
-      while (true) {
-        if (req.signal?.aborted) {
-          try { await reader.cancel(); } catch { /* ignore */ }
-          return;
-        }
-        const { value, done } = await reader.read();
-        if (done) break;
-        sseBuf += decoder.decode(value, { stream: true });
-
-        let nl: number;
-        while ((nl = sseBuf.indexOf('\n')) >= 0) {
-          const line = sseBuf.slice(0, nl).trim();
-          sseBuf = sseBuf.slice(nl + 1);
-          if (!line) continue;
-          if (!line.startsWith('data:')) continue;
-          const data = line.slice(5).trim();
-          if (data === '[DONE]') {
-            h.onDone(acc);
-            return;
-          }
-          try {
-            const json = JSON.parse(data);
-            const delta: string | undefined = json?.choices?.[0]?.delta?.content;
-            if (delta) {
-              acc += delta;
-              h.onChunk(delta);
-            }
-          } catch {
-            // Some providers prepend keepalives or comments — ignore parse errors
-          }
-        }
-      }
-      h.onDone(acc);
+      const json: any = await res.json();
+      full = json?.choices?.[0]?.message?.content ?? '';
     } catch (e: any) {
-      if (req.signal?.aborted) return; // cancel, don't surface
-      h.onError(new Error(`Stream read failed: ${e?.message ?? e}`));
+      h.onError(new Error(`Failed to parse upstream response: ${e?.message ?? e}`));
+      return;
     }
+    if (req.signal?.aborted) return;
+
+    // Emit roughly 30 chars every 16ms (≈ 60Hz) so the UI animates
+    // like a real stream. Stop early on abort.
+    const CHUNK = 30;
+    const TICK_MS = 16;
+    let i = 0;
+    const tick = () => {
+      if (req.signal?.aborted) return;
+      if (i >= full.length) {
+        h.onDone(full);
+        return;
+      }
+      const next = full.slice(i, i + CHUNK);
+      i += CHUNK;
+      h.onChunk(next);
+      setTimeout(tick, TICK_MS);
+    };
+    // Kick off on next microtask so the caller can settle state first.
+    setTimeout(tick, 0);
   }
 
   /** Optional — best-effort model list. Many local gateways don't expose /v1/models. */
@@ -169,10 +167,10 @@ export class HermesGatewayClient implements LLMClient {
     return `${base}/health`;
   }
 
-  private headers(): Record<string, string> {
+  private headers(opts: { accept?: string } = {}): Record<string, string> {
     const h: Record<string, string> = {
       'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
+      Accept: opts.accept ?? 'text/event-stream',
     };
     if (this.config.apiKey) h.Authorization = `Bearer ${this.config.apiKey}`;
     return h;

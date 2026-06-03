@@ -63,7 +63,11 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
   const hermesEndpoint = (settings as any).llmEndpoint || 'http://127.0.0.1:8642/v1/chat/completions';
   const hermesApiKey = (settings as any).llmApiKey;
   const hermesModel = (settings as any).llmModel || 'default';
-  const useRunsMode = true;
+  // Reads from settings. User can flip this in Settings → Advanced to
+  // force the plain /v1/chat/completions path, which is what most
+  // non-Hermes OpenAI-compatible backends speak. Default to runs
+  // mode (the agent-native protocol) when the user hasn't chosen.
+  const useRunsMode = (settings as any).useRunsMode ?? true;
 
   const [pendingApproval, setPendingApproval] = useState<{
     runId: string; approvalId: string; prompt: string; tool: string; args: unknown;
@@ -331,6 +335,7 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
         defaultModel: hermesModel,
       });
       try {
+        if (!useRunsMode) throw new Error('user disabled runs mode');
         const runId = await runs.startRun({
             input: text,
             instructions: systemPrompt && systemPrompt.trim() ? systemPrompt : undefined,
@@ -372,6 +377,7 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
               const finalText = ev.final_response || acc;
               updateMessage(conversationId, assistantMsg.id, { content: finalText, status: 'done' });
               haptic('success');
+              return; // <-- success: skip the fallback path
             } else if (ev.event === 'failed') {
               if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
               updateMessage(conversationId, assistantMsg.id, {
@@ -379,9 +385,11 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
                 status: 'error',
               });
               haptic('error');
+              return; // <-- server-declared failure: don't fall back
             } else if (ev.event === 'stopped') {
               if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
               updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
+              return;
             } else if (ev.event === 'approval.required') {
               // Surface the approval prompt as a modal
               setPendingApproval({
@@ -406,42 +414,79 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
               });
             }
           }
+        // Stream ended without a terminal event (server closed the connection).
+        // Surface what we have and bail — don't fall through to the chat
+        // path, which would race against the same Hermes agent that's
+        // still running on the desktop.
+        if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+        if (acc) {
+          updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
+        } else {
+          updateMessage(conversationId, assistantMsg.id, {
+            content: '**Error**: run stream closed before any content arrived',
+            status: 'error',
+          });
+          haptic('error');
+        }
+        return;
         } catch (e: any) {
           if (ctrl.signal.aborted) return;
-          // Falls back to plain chat on any runs-mode failure so user is never locked out
+          // Runs-mode failed. The Hermes gateway may simply not be the
+          // kind that supports /v1/runs (e.g. a generic OpenAI-compatible
+          // server pointed at via dev preset), or the SSE stream got
+          // dropped mid-flight. Either way: fall back to plain chat.
+          // IMPORTANT: build a fresh AbortController here. The outer
+          // `ctrl` may have been auto-aborted by the failed stream's
+          // cleanup chain, and reusing it would make the fallback
+          // fetch throw "Failed to fetch" instantly.
           console.warn('[runs mode] failed, falling back to chat completions', e);
-          await client.streamChat(
-            {
-              conversationId,
-              messages: historyMessages,
-              signal: ctrl.signal,
-              maxTokens,
-              temperature: settings.temperature,
-            },
-            {
-              onChunk: (chunk) => {
-                if (ctrl.signal.aborted) return;
-                acc += chunk;
-                pendingAcc = acc;
-                scheduleFlush();
+          const fallbackCtrl = new AbortController();
+          // Bridge the outer stop signal into the fallback ctrl so a
+          // user-initiated stop still cancels the fallback.
+          const onOuterAbort = () => fallbackCtrl.abort();
+          ctrl.signal.addEventListener('abort', onOuterAbort, { once: true });
+          // Also actively stop the failed run on the server so it
+          // doesn't keep spending tokens while we re-prompt via chat.
+          if (activeRunIdRef.current) {
+            runs.stopRun(activeRunIdRef.current).catch(() => undefined);
+            activeRunIdRef.current = null;
+          }
+          try {
+            await client.streamChat(
+              {
+                conversationId,
+                messages: historyMessages,
+                signal: fallbackCtrl.signal,
+                maxTokens,
+                temperature: settings.temperature,
               },
-              onDone: () => {
-                if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-                updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
-                haptic('success');
+              {
+                onChunk: (chunk) => {
+                  if (fallbackCtrl.signal.aborted) return;
+                  acc += chunk;
+                  pendingAcc = acc;
+                  scheduleFlush();
+                },
+                onDone: () => {
+                  if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+                  updateMessage(conversationId, assistantMsg.id, { content: acc, status: 'done' });
+                  haptic('success');
+                },
+                onError: (err) => {
+                  if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+                  const msg = err?.message ?? String(err);
+                  updateMessage(conversationId, assistantMsg.id, {
+                    content: acc + (acc ? '\n\n' : '') + `**Error**: ${msg}`,
+                    status: 'error',
+                  });
+                  haptic('error');
+                },
               },
-              onError: (err) => {
-                if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-                const msg = err?.message ?? String(err);
-                updateMessage(conversationId, assistantMsg.id, {
-                  content: acc + (acc ? '\n\n' : '') + `**Error**: ${msg}`,
-                  status: 'error',
-                });
-                haptic('error');
-              },
-            },
-            { sessionId: conversationId, sessionKey },
-          );
+              { sessionId: conversationId, sessionKey },
+            );
+          } finally {
+            ctrl.signal.removeEventListener('abort', onOuterAbort);
+          }
         }
     } catch (e: any) {
       if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }

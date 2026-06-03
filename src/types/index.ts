@@ -107,6 +107,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   llmEndpoint: 'http://127.0.0.1:8642/v1/chat/completions',
   llmApiKey: '',
   llmModel: 'default',
+  // Hermes's /v1/runs + SSE stream is the agent-native protocol but
+  // currently hangs in the gateway's aiohttp handler (see hermes-chat
+  // PHASES.md Phase 54). Default to the plain /v1/chat/completions
+  // path so the user can chat end-to-end; flip to true in Settings →
+  // Advanced once the gateway's chunked-flush SSE is stable.
+  useRunsMode: false,
   systemPrompt: [
     "You are Hermes — the kawaii agent on the user's computer.",
     "You are being talked to from a phone running hermes-chat, so:",
