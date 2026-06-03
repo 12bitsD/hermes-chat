@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, ActionSheetIOS, Platform, Share, Cli
 import { neutral, type, space, radius, useTheme } from '../../theme';
 import { Message } from '../../types';
 import { FileCard } from './FileCard';
+import { MessageTools } from './MessageTools';
 import { isNarrow } from '../../utils/platform';
 import { haptic } from '../../utils/haptic';
 import { speak } from '../../utils/speak';
@@ -94,24 +95,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
           </View>
         ) : null}
 
-        {message.toolEvents && message.toolEvents.length > 0 ? (
-          <View style={styles.toolStrip}>
-            {message.toolEvents.map((t) => {
-              const dot = t.status === 'running' ? '◔' : t.status === 'error' ? '✕' : '✓';
-              const dotColor = t.status === 'running' ? '#007AFF' : t.status === 'error' ? '#DC2626' : '#16a34a';
-              const dur = t.durationMs != null ? ` · ${(t.durationMs / 1000).toFixed(2)}s` : '';
-              return (
-                <View key={t.id} style={styles.toolChip}>
-                  <Text style={[styles.toolDot, { color: dotColor }]}>{dot}</Text>
-                  <Text style={styles.toolName}>{t.tool}</Text>
-                  {dur ? <Text style={styles.toolDur}>{dur}</Text> : null}
-                  {t.preview ? (
-                    <Text style={styles.toolPreview} numberOfLines={2}>{t.preview}</Text>
-                  ) : null}
-                </View>
-              );
-            })}
-          </View>
+        {!isUser && message.toolEvents && message.toolEvents.length > 0 ? (
+          <MessageTools events={message.toolEvents} />
         ) : null}
 
         {isUser && editing ? (
