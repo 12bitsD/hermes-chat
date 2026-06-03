@@ -4,6 +4,7 @@ import { neutral, type, space, radius, useTheme } from '../../theme';
 import { Message } from '../../types';
 import { FileCard } from './FileCard';
 import { MessageTools } from './MessageTools';
+import { deriveMascotState, MASCOT_PNG, type MascotState } from './mascotState';
 import { isNarrow } from '../../utils/platform';
 import { haptic } from '../../utils/haptic';
 import { speak } from '../../utils/speak';
@@ -67,7 +68,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
 
   return (
     <View style={[styles.row, isUser ? styles.rowUser : styles.rowAssistant]}>
-      {!isUser ? <MascotAvatar small={isNarrow} /> : null}
+      {!isUser ? <MascotAvatar small={isNarrow} state={deriveMascotState(message)} /> : null}
 
       <Pressable
         onLongPress={onLongPress}
@@ -196,12 +197,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
  * it reads as a "sticker" rather than a photo avatar. Size 36
  * desktop / 32 narrow.
  */
-const MascotAvatar: React.FC<{ small?: boolean }> = ({ small = false }) => {
+const MascotAvatar: React.FC<{ small?: boolean; state?: MascotState }> = ({ small = false, state = 'idle' }) => {
   const size = small ? 32 : 36;
   return (
     <View style={[styles.avatar, { width: size, height: size, borderRadius: 8 }]}>
       <Image
-        source={require('../../../assets/illustrations/avatar.png')}
+        source={MASCOT_PNG[state]}
         style={{ width: size, height: size, borderRadius: 8 }}
         resizeMode="cover"
       />
@@ -340,7 +341,7 @@ const ThinkingMascot: React.FC = () => {
         })}
       </Animated.View>
       <Animated.View style={{ transform: [{ translateY: bob }] }}>
-        <Image source={require('../../../assets/illustrations/avatar.png')} style={styles.thinkingAvatar} />
+        <Image source={MASCOT_PNG.thinking} style={styles.thinkingAvatar} />
       </Animated.View>
     </View>
   );
