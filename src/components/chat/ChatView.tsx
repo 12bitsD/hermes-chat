@@ -219,7 +219,13 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = () => {
                   ? `${pendingFiles.length} file(s) attached`
                   : conversationId
                     ? `→ ${settings.llmProvider === 'hermes-gateway' ? 'Hermes' : settings.llmProvider} · ${conversationId.slice(-6)}`
-                    : isMobile ? '' : 'Press Enter to send'}
+                    // Phase 68: 'Press Enter to send' hint only shows
+                    // before the user has sent their first message.
+                    // After that, the Send button is the obvious
+                    // affordance and the hint just adds visual noise.
+                    : messages.some((m) => m.role === 'user') || isMobile
+                      ? ''
+                      : 'Press Enter to send'}
             </Text>
             {streaming ? (
               <Button label="Stop" onPress={onStop} small />

@@ -234,8 +234,10 @@ const QuickReplies: React.FC<{ onPick: (text: string) => void; content: string }
   if (/^\s*[-*]\s/m.test(content)) {
     chips.push({ label: 'Summarize', text: 'Summarize the above in 2 sentences.' });
   }
-  // Always-offer chips
-  chips.push({ label: '👍 Continue', text: 'Continue. What else?' });
+
+  // (Phase 68: removed '👍 Continue' — too generic, agent doesn't
+  // know what direction to continue in and usually produces filler.
+  // The 3 context chips above already cover the common paths.)
 
   const accent = useTheme();
 
