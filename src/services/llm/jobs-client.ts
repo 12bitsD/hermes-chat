@@ -23,6 +23,7 @@
  */
 
 import type { LLMConfig } from './config';
+import { gatewayApiUrl } from './url';
 
 export type JobState = 'queued' | 'running' | 'paused' | 'done' | 'failed' | 'cancelled' | string;
 
@@ -41,7 +42,7 @@ export class HermesJobsClient {
   constructor(private config: LLMConfig) {}
 
   private base(): string {
-    return this.config.endpoint.replace(/\/chat\/completions\/?$/, '') + '/api';
+    return gatewayApiUrl(this.config.endpoint);
   }
 
   private headers(): Record<string, string> {

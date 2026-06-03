@@ -23,6 +23,7 @@
  */
 
 import type { LLMConfig } from './config';
+import { gatewayApiUrl } from './url';
 
 export interface HermesSession {
   id: string;
@@ -39,7 +40,7 @@ export class HermesSessionsClient {
   constructor(private config: LLMConfig) {}
 
   private base(): string {
-    return this.config.endpoint.replace(/\/chat\/completions\/?$/, '') + '/api';
+    return gatewayApiUrl(this.config.endpoint);
   }
 
   private headers(): Record<string, string> {

@@ -1,14 +1,6 @@
 /**
- * LLM client interface — the seam between the UI and whatever backend is
- * behind it (mock today, real Hermes tomorrow).
- *
- * Two implementations live side-by-side:
- *   - MockLLMClient: char-by-char fake streaming, useful for offline dev
- *   - HermesGatewayClient: real OpenAI-compatible streaming against the
- *     local Hermes gateway (see ../config.ts for endpoint resolution)
- *
- * The UI never imports an implementation directly; it always goes through
- * `getLLMClient()` which is configured at app boot from settings.
+ * LLM client interface: the UI talks to Hermes through this port, while
+ * HermesGatewayClient owns the wire protocol and gateway headers.
  */
 
 import type { Role } from '../../types';
@@ -72,7 +64,7 @@ export const NO_CONFIG:  Reachability = { ok: false, status: 'config-missing', m
 
 export interface LLMClient {
   /** Provider id used in the settings UI / logs */
-  readonly id: 'mock' | 'hermes-gateway' | 'openai-compatible';
+  readonly id: 'hermes-gateway';
   /** Human-readable provider name */
   readonly displayName: string;
   /** Cheap, non-streaming ping used at boot to decide which provider to use.

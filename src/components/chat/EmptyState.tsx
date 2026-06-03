@@ -11,7 +11,7 @@
  * composer / drawer can react without EmptyState knowing about them.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Animated, Easing, ActivityIndicator } from 'react-native';
 import { neutral, type, space, radius, useTheme } from '../../theme';
 import { isNarrow } from '../../utils/platform';

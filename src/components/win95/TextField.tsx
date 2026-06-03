@@ -1,6 +1,6 @@
-import React, { forwardRef } from 'react';
+import { forwardRef } from 'react';
 import { TextInput, View, Text, StyleSheet, TextInputProps, ViewStyle } from 'react-native';
-import { neutral, type, space, radius } from '../../theme';
+import { neutral, type, space } from '../../theme';
 
 export interface TextFieldProps extends TextInputProps {
   label?: string;

@@ -16,14 +16,12 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { neutral, type, space, radius, useTheme } from '../theme';
 import { Button } from './win95';
 import { haptic } from '../utils/haptic';
-
-const SEEN_KEY = 'hermes-chat:welcome-seen';
-const AUTO_DISMISS_MS = 8_000;
+import { HERMES_GATEWAY_PORT, WELCOME_AUTO_DISMISS_MS, WELCOME_SEEN_STORAGE_KEY } from '../config/app-constants';
 
 export const WelcomeOverlay: React.FC<{ visible: boolean; onDismiss: () => void }> = ({ visible, onDismiss }) => {
   const accent = useTheme();
@@ -39,7 +37,7 @@ export const WelcomeOverlay: React.FC<{ visible: boolean; onDismiss: () => void 
         Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 7, tension: 60 }),
         Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true, easing: Easing.out(Easing.cubic) }),
       ]).start();
-      const t = setTimeout(() => onDismiss(), AUTO_DISMISS_MS);
+      const t = setTimeout(() => onDismiss(), WELCOME_AUTO_DISMISS_MS);
       return () => clearTimeout(t);
     } else {
       setMounted(false);
@@ -54,7 +52,7 @@ export const WelcomeOverlay: React.FC<{ visible: boolean; onDismiss: () => void 
         <Text style={styles.emoji}>🎉</Text>
         <Text style={styles.title}>Found Hermes!</Text>
         <Text style={styles.subtitle}>
-          Connected to your local agent on port 8642.
+          Connected to your local agent on port {HERMES_GATEWAY_PORT}.
         </Text>
 
         <View style={[styles.statRow, { borderColor: neutral.border }]}>
@@ -132,7 +130,7 @@ const styles = StyleSheet.create({
 export async function shouldShowWelcome(snap: { updatedAt: number } | null): Promise<boolean> {
   if (!snap) return false;
   try {
-    const seen = await AsyncStorage.getItem(SEEN_KEY);
+    const seen = await AsyncStorage.getItem(WELCOME_SEEN_STORAGE_KEY);
     return seen !== '1';
   } catch {
     return false;
@@ -140,5 +138,5 @@ export async function shouldShowWelcome(snap: { updatedAt: number } | null): Pro
 }
 
 export async function markWelcomeSeen(): Promise<void> {
-  try { await AsyncStorage.setItem(SEEN_KEY, '1'); } catch { /* noop */ }
+  try { await AsyncStorage.setItem(WELCOME_SEEN_STORAGE_KEY, '1'); } catch { /* noop */ }
 }

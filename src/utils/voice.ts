@@ -11,7 +11,6 @@
  * is missing (e.g. Expo Go on a device that hasn't rebuilt).
  */
 
-type Partial = { text: string; isFinal?: boolean };
 type Stop = () => Promise<string | null>;
 
 export async function requestVoicePermission(): Promise<boolean> {

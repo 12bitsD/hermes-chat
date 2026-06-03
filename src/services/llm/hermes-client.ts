@@ -21,6 +21,7 @@
 import type { LLMClient, LLMStreamRequest, LLMStreamHandlers, Reachability } from './types';
 import { REACHABLE, NO_AUTH, DOWN, TIMEOUT, NO_CONFIG } from './types';
 import type { LLMConfig } from './config';
+import { gatewayV1Url } from './url';
 
 export interface HermesRequestContext {
   /** Maps to X-Hermes-Session-Id on the gateway. */
@@ -117,24 +118,30 @@ export class HermesGatewayClient implements LLMClient {
     }
     if (req.signal?.aborted) return;
 
-    // Emit roughly 30 chars every 16ms (≈ 60Hz) so the UI animates
-    // like a real stream. Stop early on abort.
+    // Emit roughly 30 chars every 16ms so the UI animates like a real
+    // stream. Keep the returned promise pending until the synthetic
+    // stream finishes so callers do not clear their in-flight state early.
     const CHUNK = 30;
     const TICK_MS = 16;
     let i = 0;
-    const tick = () => {
-      if (req.signal?.aborted) return;
-      if (i >= full.length) {
-        h.onDone(full);
-        return;
-      }
-      const next = full.slice(i, i + CHUNK);
-      i += CHUNK;
-      h.onChunk(next);
-      setTimeout(tick, TICK_MS);
-    };
-    // Kick off on next microtask so the caller can settle state first.
-    setTimeout(tick, 0);
+    await new Promise<void>((resolve) => {
+      const tick = () => {
+        if (req.signal?.aborted) {
+          resolve();
+          return;
+        }
+        if (i >= full.length) {
+          h.onDone(full);
+          resolve();
+          return;
+        }
+        const next = full.slice(i, i + CHUNK);
+        i += CHUNK;
+        h.onChunk(next);
+        setTimeout(tick, TICK_MS);
+      };
+      setTimeout(tick, 0);
+    });
   }
 
   /** Optional — best-effort model list. Many local gateways don't expose /v1/models. */
@@ -161,14 +168,12 @@ export class HermesGatewayClient implements LLMClient {
     // (it walks the registered model providers). For the reachability
     // probe we use /v1/health, which is a 0-cost handler.
     if (!this.config.endpoint) return '';
-    const base = this.config.endpoint.replace(/\/chat\/completions\/?$/, '');
-    return `${base}/models`;
+    return `${gatewayV1Url(this.config.endpoint)}/models`;
   }
 
   private healthUrl(): string {
     if (!this.config.endpoint) return '';
-    const base = this.config.endpoint.replace(/\/chat\/completions\/?$/, '');
-    return `${base}/health`;
+    return `${gatewayV1Url(this.config.endpoint)}/health`;
   }
 
   private headers(opts: { accept?: string } = {}): Record<string, string> {

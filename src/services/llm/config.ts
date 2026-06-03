@@ -12,6 +12,7 @@
  */
 
 import { Platform } from 'react-native';
+import { DEFAULT_MODEL, HERMES_CHAT_ENDPOINT_PATH, HERMES_GATEWAY_PORT } from '../../config/app-constants';
 
 /** Single supported provider. The type is left narrow on purpose. */
 export type ProviderId = 'hermes-gateway';
@@ -26,12 +27,12 @@ export interface LLMConfig {
   defaultModel: string;
 }
 
-export const DEFAULT_GATEWAY_PORT = 8642;
+export const DEFAULT_GATEWAY_PORT = HERMES_GATEWAY_PORT;
 
 export function defaultEndpoint(): string {
   // Android emulator's host loopback is 10.0.2.2; everywhere else is 127.0.0.1.
   const host = Platform.OS === 'android' ? '10.0.2.2' : '127.0.0.1';
-  return `http://${host}:${DEFAULT_GATEWAY_PORT}/v1/chat/completions`;
+  return `http://${host}:${DEFAULT_GATEWAY_PORT}${HERMES_CHAT_ENDPOINT_PATH}`;
 }
 
 /**
@@ -43,5 +44,5 @@ export const DEFAULT_CONFIG: LLMConfig = {
   provider: 'hermes-gateway',
   endpoint: defaultEndpoint(),
   apiKey: '',
-  defaultModel: 'default',
+  defaultModel: DEFAULT_MODEL,
 };

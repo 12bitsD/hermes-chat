@@ -7,6 +7,7 @@
  */
 
 import type { LLMConfig } from './config';
+import { gatewayV1Url } from './url';
 
 export interface HermesCapabilities {
   platform: string;
@@ -31,8 +32,7 @@ export async function fetchCapabilities(
   config: LLMConfig,
   signal?: AbortSignal,
 ): Promise<HermesCapabilities | null> {
-  const base = config.endpoint.replace(/\/chat\/completions\/?$/, '');
-  const url = `${base}/v1/capabilities`;
+  const url = `${gatewayV1Url(config.endpoint)}/capabilities`;
 
   if (cache && cache.url === url && Date.now() - cache.at < CACHE_MS) {
     return cache.data;

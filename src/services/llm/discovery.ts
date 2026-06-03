@@ -14,6 +14,7 @@
  */
 
 import type { LLMConfig } from './config';
+import { gatewayV1Url } from './url';
 
 export interface HermesSkill {
   id: string;
@@ -30,7 +31,7 @@ export interface HermesToolset {
 }
 
 function base(config: LLMConfig): string {
-  return config.endpoint.replace(/\/chat\/completions\/?$/, '');
+  return gatewayV1Url(config.endpoint);
 }
 
 function headers(config: LLMConfig): Record<string, string> {
@@ -41,7 +42,7 @@ function headers(config: LLMConfig): Record<string, string> {
 
 export async function fetchSkills(config: LLMConfig, signal?: AbortSignal): Promise<HermesSkill[] | null> {
   try {
-    const res = await fetch(`${base(config)}/v1/skills`, {
+    const res = await fetch(`${base(config)}/skills`, {
       method: 'GET', headers: headers(config), signal,
     } as RequestInit);
     if (!res.ok) return null;
@@ -58,7 +59,7 @@ export async function fetchSkills(config: LLMConfig, signal?: AbortSignal): Prom
 
 export async function fetchToolsets(config: LLMConfig, signal?: AbortSignal): Promise<HermesToolset[] | null> {
   try {
-    const res = await fetch(`${base(config)}/v1/toolsets`, {
+    const res = await fetch(`${base(config)}/toolsets`, {
       method: 'GET', headers: headers(config), signal,
     } as RequestInit);
     if (!res.ok) return null;

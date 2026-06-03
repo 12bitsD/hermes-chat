@@ -26,8 +26,9 @@
  */
 
 import type { LLMConfig } from './config';
-import type { LLMStreamHandlers, Reachability } from './types';
+import type { Reachability } from './types';
 import { REACHABLE, NO_AUTH, DOWN, TIMEOUT, NO_CONFIG } from './types';
+import { gatewayV1Url } from './url';
 export type RunEvent =
   | { event: 'message.delta'; run_id: string; timestamp: number; delta: string }
   | { event: 'tool.started'; run_id: string; timestamp: number; tool: string; preview?: string }
@@ -58,8 +59,7 @@ export class HermesRunsClient {
   isReachable(): Promise<Reachability> {
     // /v1/runs is POST only. Use /v1/health (0-cost handler) as a probe.
     if (!this.config.endpoint) return Promise.resolve(NO_CONFIG);
-    const base = this.config.endpoint.replace(/\/chat\/completions\/?$/, '');
-    return fetch(`${base}/health`, {
+    return fetch(`${gatewayV1Url(this.config.endpoint)}/health`, {
       method: 'GET',
       headers: this.headers({}),
       signal: AbortSignal.timeout(2500),
@@ -212,7 +212,7 @@ export class HermesRunsClient {
   }
 
   private runsUrl(): string {
-    return this.config.endpoint.replace(/\/chat\/completions\/?$/, '') + '/runs';
+    return `${gatewayV1Url(this.config.endpoint)}/runs`;
   }
   private eventsUrl(runId: string): string {
     return `${this.runsUrl()}/${encodeURIComponent(runId)}/events`;

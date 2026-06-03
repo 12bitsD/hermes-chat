@@ -1,12 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, Platform } from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
 import { neutral, type, space, radius } from '../../theme';
+import type { Attachment } from '../../types';
 
 export interface FileCardProps {
   name: string;
-  kind: 'pdf' | 'ppt' | 'image' | 'text' | 'other';
+  kind: Attachment['kind'];
   size: number;
   uri: string;
   previewUri?: string;
@@ -32,7 +31,7 @@ function formatSize(bytes: number): string {
 }
 
 export const FileCard: React.FC<FileCardProps> = ({
-  name, kind, size, uri, previewUri, expanded = false, onToggle, onRemove, previewContent, pageCount,
+  name, kind, size, previewUri, expanded = false, onToggle, onRemove, previewContent, pageCount,
 }) => {
   return (
     <View style={styles.card}>
@@ -86,118 +85,6 @@ export const FileCard: React.FC<FileCardProps> = ({
   );
 };
 
-// ─── Pickers (platform-aware) ──────────────────────────────────────────────────
-
-export interface PickedFile {
-  name: string;
-  size: number;
-  uri: string;
-  kind: FileCardProps['kind'];
-  previewContent?: string;
-  mimeType?: string;
-}
-
-export async function pickFile(): Promise<PickedFile | null> {
-  if (Platform.OS === 'web') return pickFileWeb();
-  return pickFileNative();
-}
-
-async function pickFileNative(): Promise<PickedFile | null> {
-  try {
-    const res = await DocumentPicker.getDocumentAsync({
-      copyToCacheDirectory: true,
-      multiple: false,
-    });
-    if (res.canceled || !res.assets?.[0]) return null;
-    const a = res.assets[0];
-    const kind = guessKindFromName(a.name, a.mimeType ?? '');
-    let previewContent: string | undefined;
-    if (kind === 'text') {
-      try {
-        previewContent = await FileSystem.readAsStringAsync(a.uri, { encoding: 'utf8' });
-      } catch { /* ignore */ }
-    }
-    return {
-      name: a.name, size: a.size ?? 0, uri: a.uri, kind, previewContent,
-      mimeType: a.mimeType ?? undefined,
-    };
-  } catch (e) {
-    console.warn('[pickFileNative] failed', e);
-    return null;
-  }
-}
-
-async function pickFileWeb(): Promise<PickedFile | null> {
-  return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.onchange = () => {
-      const f = input.files?.[0];
-      if (!f) { resolve(null); return; }
-      const kind = guessKindFromName(f.name, f.type);
-      const reader = new FileReader();
-      reader.onload = () => {
-        resolve({
-          name: f.name, size: f.size, uri: reader.result as string, kind,
-          previewContent: kind === 'text' ? (reader.result as string) : undefined,
-          mimeType: f.type || undefined,
-        });
-      };
-      if (kind === 'text') reader.readAsText(f);
-      else reader.readAsDataURL(f);
-    };
-    input.click();
-  });
-}
-
-function guessKindFromName(name: string, mime: string): FileCardProps['kind'] {
-  if (mime === 'application/pdf' || /\.pdf$/i.test(name)) return 'pdf';
-  if (mime.includes('presentation') || /\.(pptx|ppt)$/i.test(name)) return 'ppt';
-  if (mime.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(name)) return 'image';
-  if (mime.startsWith('text/') || /\.(md|txt|json|js|ts|py|css|html|xml|yaml|yml|csv)$/i.test(name)) return 'text';
-  return 'other';
-}
-
-// ─── Attach zone (lightweight) ────────────────────────────────────────────────
-
-export interface AttachZoneProps {
-  onFilePicked: (file: PickedFile) => void;
-  children?: React.ReactNode;
-  buttonLabel?: string;
-}
-
-export const AttachZone: React.FC<AttachZoneProps> = ({ onFilePicked, children, buttonLabel }) => {
-  const [hovering, setHovering] = useState(false);
-  const webDropProps: any = Platform.OS === 'web'
-    ? {
-        onDragOver: (e: DragEvent) => { e.preventDefault(); setHovering(true); },
-        onDragLeave: () => setHovering(false),
-        onDrop: (e: DragEvent) => {
-          e.preventDefault();
-          setHovering(false);
-          pickFileWeb().then((f) => f && onFilePicked(f));
-        },
-      }
-    : {};
-
-  const onTap = useCallback(async () => {
-    const f = await pickFile();
-    if (f) onFilePicked(f);
-  }, [onFilePicked]);
-
-  return (
-    <View
-      {...webDropProps}
-      style={[styles.drop, hovering ? styles.dropHover : null]}
-    >
-      {children}
-      <Pressable onPress={onTap} style={({ pressed }) => [styles.attachBtn, pressed ? styles.attachBtnPressed : null]}>
-        <Text style={styles.attachBtnText}>📎 {buttonLabel ?? 'Attach'}</Text>
-      </Pressable>
-    </View>
-  );
-};
-
 const styles = StyleSheet.create({
   card: {
     backgroundColor: neutral.surface,
@@ -223,18 +110,4 @@ const styles = StyleSheet.create({
   placeholderIcon: { fontSize: 28, marginBottom: 4 },
   placeholderText: { ...type.caption, color: neutral.inkMuted, fontStyle: 'italic', textAlign: 'center' },
 
-  drop: { position: 'relative' },
-  dropHover: { backgroundColor: neutral.surfaceMuted },
-  attachBtn: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: neutral.surface,
-    paddingHorizontal: space.sm,
-    paddingVertical: 4,
-    borderRadius: radius.md,
-    borderWidth: 1, borderColor: neutral.border,
-  },
-  attachBtnPressed: { backgroundColor: neutral.surfaceMuted },
-  attachBtnText: { ...type.caption, color: neutral.inkSoft },
 });

@@ -19,21 +19,18 @@
  * a tunnel or a different machine.
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React from 'react';
 import {
-  View, Text, StyleSheet, Modal, Pressable, ScrollView, TextInput, Switch,
+  View, Text, StyleSheet, Modal, Pressable, ScrollView, Switch,
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { neutral, type, space, radius, palette, useTheme, accentList } from '../theme';
-import { Button } from './win95';
+import { neutral, type, space, radius, useTheme, accentList } from '../theme';
+import { Button, TextField } from './win95';
 import { useAppStore } from '../store/app';
-import { syncLLMFromSettings, getLLMClient } from '../store/persistence';
-import { defaultEndpoint } from '../services/llm/config';
-import { fetchCapabilities, HermesCapabilities, CAPABILITY_LABELS } from '../services/llm/capabilities';
-import { fetchSkills, fetchToolsets, type HermesSkill, type HermesToolset } from '../services/llm/discovery';
-import { HermesSessionsClient, type HermesSession } from '../services/llm/sessions-client';
-import { HermesJobsClient, type HermesJob } from '../services/llm/jobs-client';
+import { HERMES_CHAT_ENDPOINT_PATH, HERMES_GATEWAY_PORT, SNAPSHOT_POLL_MS } from '../config/app-constants';
+import { CAPABILITY_LABELS } from '../services/llm/capabilities';
+import { useSettingsController } from '../features/settings/useSettingsController';
 import { haptic } from '../utils/haptic';
 
 export interface SettingsPanelProps {
@@ -41,210 +38,42 @@ export interface SettingsPanelProps {
   onClose: () => void;
 }
 
+const ENDPOINT_PLACEHOLDER = `http://127.0.0.1:${HERMES_GATEWAY_PORT}${HERMES_CHAT_ENDPOINT_PATH}`;
+const SNAPSHOT_POLL_SECONDS = Math.floor(SNAPSHOT_POLL_MS / 1000);
+
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) => {
   const insets = useSafeAreaInsets();
   const accent = useTheme();
-  const settings = useAppStore((s) => s.settings);
-  const updateSettings = useAppStore((s) => s.updateSettings);
-
-  // Connection
-  const [endpoint, setEndpoint] = useState(settings.llmEndpoint);
-  const [apiKey, setApiKey] = useState(settings.llmApiKey);
-
-  // Agent
-  const [model, setModel] = useState(settings.llmModel);
-  const [systemPrompt, setSystemPrompt] = useState(settings.systemPrompt);
-  const [temperature, setTemperature] = useState(String(settings.temperature ?? ''));
-  const [maxTokens, setMaxTokens] = useState(String((settings as any).maxTokens ?? ''));
-
-  // Streaming + behavior
-  const [streamChunkMs, setStreamChunkMs] = useState(String(settings.streamChunkMs));
-  const [haptics, setHaptics] = useState(settings.enableHaptics);
-  const [accentKey, setAccentKey] = useState(settings.accent);
-
-  // Hermes-only advanced
-  const [sessionKey, setSessionKey] = useState((settings as any).sessionKey ?? '');
-  const [useRunsMode, setUseRunsMode] = useState((settings as any).useRunsMode ?? false);
-
-  // Live data fetched from the gateway
-  const [probing, setProbing] = useState(false);
-  const [probeResult, setProbeResult] = useState<null | { ok: boolean; msg: string }>(null);
-  const [models, setModels] = useState<{ id: string; label: string }[]>([]);
-  const [loadingModels, setLoadingModels] = useState(false);
-  const [caps, setCaps] = useState<HermesCapabilities | null>(null);
-  const [loadingCaps, setLoadingCaps] = useState(false);
-  const [skills, setSkills] = useState<HermesSkill[] | null>(null);
-  const [loadingSkills, setLoadingSkills] = useState(false);
-  const [toolsets, setToolsets] = useState<HermesToolset[] | null>(null);
-  const [loadingToolsets, setLoadingToolsets] = useState(false);
-  const [sessions, setSessions] = useState<HermesSession[] | null>(null);
-  const [loadingSessions, setLoadingSessions] = useState(false);
-  const [jobs, setJobs] = useState<HermesJob[] | null>(null);
-  const [loadingJobs, setLoadingJobs] = useState(false);
-
-  // Resync drafts when the panel opens
-  useEffect(() => {
-    if (!open) return;
-    setEndpoint(settings.llmEndpoint);
-    setApiKey(settings.llmApiKey);
-    setModel(settings.llmModel);
-    setSystemPrompt(settings.systemPrompt);
-    setTemperature(String(settings.temperature ?? ''));
-    setStreamChunkMs(String(settings.streamChunkMs));
-    setHaptics(settings.enableHaptics);
-    setAccentKey(settings.accent);
-    setMaxTokens(String((settings as any).maxTokens ?? ''));
-    setSessionKey((settings as any).sessionKey ?? '');
-    setUseRunsMode((settings as any).useRunsMode ?? false);
-    setProbeResult(null);
-    setModels([]);
-  }, [open, settings]);
-
-  // Probe the live endpoint (LLMClient.isReachable)
-  const probe = useCallback(async () => {
-    haptic('light');
-    setProbing(true);
-    setProbeResult(null);
-    try {
-      const r = await getLLMClient().isReachable();
-      setProbeResult({ ok: r.ok, msg: r.message });
-      haptic(r.ok ? 'success' : 'error');
-    } catch (e: any) {
-      setProbeResult({ ok: false, msg: `Probe failed: ${e?.message ?? e}` });
-      haptic('error');
-    } finally {
-      setProbing(false);
-    }
-  }, []);
-
-  // Fetch /v1/models from the gateway
-  const fetchModels = useCallback(async () => {
-    setLoadingModels(true);
-    try {
-      const base = endpoint.replace(/\/v1\/chat\/completions\/?$/, '');
-      const headers: Record<string, string> = {};
-      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-      const res = await fetch(`${base}/v1/models`, { method: 'GET', headers });
-      if (!res.ok) { setModels([]); haptic('warning'); return; }
-      const json: any = await res.json();
-      const arr: any[] = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : [];
-      setModels(arr.map((m) => ({ id: m.id, label: m.id })));
-      haptic(arr.length ? 'success' : 'warning');
-    } catch { setModels([]); haptic('error'); }
-    finally { setLoadingModels(false); }
-  }, [endpoint, apiKey]);
-
-  // Discovery endpoints — Hermes-native
-  const fetchCapabilitiesNow = useCallback(async () => {
-    setLoadingCaps(true);
-    try {
-      const c = await fetchCapabilities({
-        provider: 'hermes-gateway',
-        endpoint: endpoint || defaultEndpoint(),
-        apiKey: apiKey || undefined,
-        defaultModel: model,
-      });
-      setCaps(c);
-      haptic(c ? 'success' : 'warning');
-    } catch { setCaps(null); haptic('error'); }
-    finally { setLoadingCaps(false); }
-  }, [endpoint, apiKey, model]);
-
-  const fetchSkillsNow = useCallback(async () => {
-    setLoadingSkills(true);
-    try {
-      const s = await fetchSkills({
-        provider: 'hermes-gateway',
-        endpoint: endpoint || defaultEndpoint(),
-        apiKey: apiKey || undefined,
-        defaultModel: model,
-      });
-      setSkills(s);
-      haptic(s ? (s.length ? 'success' : 'warning') : 'error');
-    } catch { setSkills(null); haptic('error'); }
-    finally { setLoadingSkills(false); }
-  }, [endpoint, apiKey, model]);
-
-  const fetchToolsetsNow = useCallback(async () => {
-    setLoadingToolsets(true);
-    try {
-      const t = await fetchToolsets({
-        provider: 'hermes-gateway',
-        endpoint: endpoint || defaultEndpoint(),
-        apiKey: apiKey || undefined,
-        defaultModel: model,
-      });
-      setToolsets(t);
-      haptic(t ? (t.length ? 'success' : 'warning') : 'error');
-    } catch { setToolsets(null); haptic('error'); }
-    finally { setLoadingToolsets(false); }
-  }, [endpoint, apiKey, model]);
-
-  const fetchSessionsNow = useCallback(async () => {
-    setLoadingSessions(true);
-    try {
-      const client = new HermesSessionsClient({
-        provider: 'hermes-gateway',
-        endpoint: endpoint || defaultEndpoint(),
-        apiKey: apiKey || undefined,
-        defaultModel: model,
-      });
-      const list = await client.list();
-      setSessions(list);
-      haptic(list ? (list.length ? 'success' : 'warning') : 'error');
-    } catch { setSessions(null); haptic('error'); }
-    finally { setLoadingSessions(false); }
-  }, [endpoint, apiKey, model]);
-
-  const fetchJobsNow = useCallback(async () => {
-    setLoadingJobs(true);
-    try {
-      const client = new HermesJobsClient({
-        provider: 'hermes-gateway',
-        endpoint: endpoint || defaultEndpoint(),
-        apiKey: apiKey || undefined,
-        defaultModel: model,
-      });
-      const list = await client.list();
-      setJobs(list);
-      haptic(list ? (list.length ? 'success' : 'warning') : 'error');
-    } catch { setJobs(null); haptic('error'); }
-    finally { setLoadingJobs(false); }
-  }, [endpoint, apiKey, model]);
-
-  // Auto-load discovery on open if endpoint is set
-  useEffect(() => {
-    if (!open) return;
-    if (!caps && !loadingCaps) fetchCapabilitiesNow();
-    if (!skills && !loadingSkills) fetchSkillsNow();
-    if (!toolsets && !loadingToolsets) fetchToolsetsNow();
-    if (sessions === null && !loadingSessions) fetchSessionsNow();
-    if (jobs === null && !loadingJobs) fetchJobsNow();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  // Save
-  const save = useCallback(() => {
-    updateSettings({
-      llmProvider: 'hermes-gateway',
-      llmEndpoint: endpoint,
-      llmApiKey: apiKey,
-      llmModel: model,
-      systemPrompt,
-      temperature: temperature.trim() === '' ? undefined : Number(temperature),
-      streamChunkMs: Math.max(0, Number(streamChunkMs) || 0),
-      enableHaptics: haptics,
-      accent: accentKey,
-      maxTokens: maxTokens.trim() === '' ? undefined : Number(maxTokens),
-      sessionKey: sessionKey.trim() || undefined,
-      useRunsMode,
-    } as any);
-    syncLLMFromSettings();
-    haptic('success');
-    onClose();
-  }, [endpoint, apiKey, model, systemPrompt, temperature, streamChunkMs, haptics, accentKey, maxTokens, sessionKey, useRunsMode, updateSettings, onClose]);
-
-  const isHermes = true; // only provider
+  const {
+    endpoint, setEndpoint,
+    apiKey, setApiKey,
+    model, setModel,
+    systemPrompt, setSystemPrompt,
+    temperature, setTemperature,
+    maxTokens, setMaxTokens,
+    haptics, setHaptics,
+    accentKey, setAccentKey,
+    sessionKey, setSessionKey,
+    useRunsMode, setUseRunsMode,
+    probing, probeResult,
+    models, loadingModels,
+    caps, loadingCaps,
+    skills, loadingSkills,
+    toolsets, loadingToolsets,
+    sessions, loadingSessions,
+    jobs, loadingJobs,
+    probe,
+    fetchModels,
+    fetchCapabilitiesNow,
+    fetchSkillsNow,
+    fetchToolsetsNow,
+    fetchSessionsNow,
+    fetchJobsNow,
+    runJob,
+    pauseJob,
+    resumeJob,
+    save,
+  } = useSettingsController(open, onClose);
 
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
@@ -269,7 +98,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
             {/* ── Connection ─────────────────────────────────────────── */}
             <Section title="Connection">
               <Text style={styles.label}>Endpoint</Text>
-              <TextField value={endpoint} onChangeText={setEndpoint} placeholder="http://127.0.0.1:8642/v1/chat/completions" />
+              <TextField value={endpoint} onChangeText={setEndpoint} placeholder={ENDPOINT_PLACEHOLDER} />
 
               <Text style={styles.label}>API key (required — paste from <Text style={{ fontFamily: 'Courier' }}>hermes config show</Text>)</Text>
               <TextField value={apiKey} onChangeText={setApiKey} placeholder="Hermes API_SERVER_KEY (required)" secureTextEntry />
@@ -485,47 +314,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
                           {isRunning ? (
                             <Button
                               label="⏸ Pause"
-                              onPress={async () => {
-                                const c = new HermesJobsClient({
-                                  provider: 'hermes-gateway',
-                                  endpoint: endpoint || defaultEndpoint(),
-                                  apiKey: apiKey || undefined,
-                                  defaultModel: model,
-                                });
-                                haptic((await c.pause(j.id)) ? 'success' : 'error');
-                                fetchJobsNow();
-                              }}
+                              onPress={() => pauseJob(j.id)}
                               small ghost
                             />
                           ) : (
                             <Button
                               label="▶ Run"
-                              onPress={async () => {
-                                const c = new HermesJobsClient({
-                                  provider: 'hermes-gateway',
-                                  endpoint: endpoint || defaultEndpoint(),
-                                  apiKey: apiKey || undefined,
-                                  defaultModel: model,
-                                });
-                                haptic((await c.run(j.id)) ? 'success' : 'error');
-                                fetchJobsNow();
-                              }}
+                              onPress={() => runJob(j.id)}
                               small ghost
                             />
                           )}
                           {isPaused ? (
                             <Button
                               label="↪ Resume"
-                              onPress={async () => {
-                                const c = new HermesJobsClient({
-                                  provider: 'hermes-gateway',
-                                  endpoint: endpoint || defaultEndpoint(),
-                                  apiKey: apiKey || undefined,
-                                  defaultModel: model,
-                                });
-                                haptic((await c.resume(j.id)) ? 'success' : 'error');
-                                fetchJobsNow();
-                              }}
+                              onPress={() => resumeJob(j.id)}
                               small ghost
                             />
                           ) : null}
@@ -606,8 +408,8 @@ const HermesSnapshotCard: React.FC = () => {
       <Text style={styles.hint}>
         Gateway offline — last sync never succeeded. The status bar at the
         bottom of the app shows the live dot; if it's red, start the
-        Hermes gateway on port 8642 and the snapshot will populate within
-        30 s.
+        Hermes gateway on port {HERMES_GATEWAY_PORT} and the snapshot will populate within
+        {SNAPSHOT_POLL_SECONDS} s.
       </Text>
     );
   }
@@ -624,7 +426,7 @@ const HermesSnapshotCard: React.FC = () => {
         <Chip emoji="📋" count={snap.jobs.length} label="jobs" fg={accent.accent.fg} />
       </View>
       <Text style={styles.hint}>
-        Last synced {ageLabel} · auto-refreshes every 30 s.
+        Last synced {ageLabel} · auto-refreshes every {SNAPSHOT_POLL_SECONDS} s.
       </Text>
     </View>
   );
@@ -648,8 +450,6 @@ function jobStateColor(state: string | undefined) {
     default:         return { color: neutral.inkMuted };
   }
 }
-
-import { TextField } from './win95';
 
 const styles = StyleSheet.create({
   backdrop: { ...StyleSheet.absoluteFill, backgroundColor: '#0006' },

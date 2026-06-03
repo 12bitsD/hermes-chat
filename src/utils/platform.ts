@@ -7,8 +7,7 @@
  * value at module init (e.g. for class-style pickers).
  */
 import { Platform, Dimensions } from 'react-native';
-
-const NARROW_BREAKPOINT = 768;
+import { NARROW_BREAKPOINT } from '../config/app-constants';
 
 export const isAndroid = Platform.OS === 'android';
 export const isIOS = Platform.OS === 'ios';

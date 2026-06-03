@@ -37,16 +37,11 @@ export function getLLMConfig(): LLMConfig {
   return cachedConfig;
 }
 
-/** Cast helper for the Hermes session-context header forwarding. */
-export function getHermesClient(): HermesGatewayClient | null {
-  const c = getLLMClient();
-  return c instanceof HermesGatewayClient ? c : null;
-}
-
 export type { LLMClient, LLMStreamRequest, LLMStreamHandlers, ChatMessageInput, LLMStreamContext } from './types';
 export type { LLMConfig } from './config';
 export { HermesRunsClient, type RunEvent, type RunRequest, type RunStreamCallbacks } from './runs-client';
 export { HermesGatewayClient, type HermesRequestContext } from './hermes-client';
+export { createHermesPort, type HermesPort } from './hermes-port';
 export { HermesSessionsClient, type HermesSession } from './sessions-client';
 export { HermesJobsClient, type HermesJob, type JobState } from './jobs-client';
 export { fetchSkills, fetchToolsets, type HermesSkill, type HermesToolset } from './discovery';

@@ -18,12 +18,12 @@ import { useEffect } from 'react';
 import { useAppStore, HermesSnapshot } from './app';
 import { fetchCapabilities } from '../services/llm/capabilities';
 import { fetchSkills, fetchToolsets } from '../services/llm/discovery';
-import { HermesSessionsClient } from '../services/llm/sessions-client';
-import { HermesJobsClient } from '../services/llm/jobs-client';
-import { defaultEndpoint, LLMConfig } from '../services/llm/config';
+import { LLMConfig } from '../services/llm/config';
+import { createJobsClient, createSessionsClient, buildLLMConfig } from '../services/llm/factory';
+import { SNAPSHOT_POLL_MS, SNAPSHOT_REQUEST_TIMEOUT_MS } from '../config/app-constants';
 
-const POLL_MS = 30_000;
-const PER_REQUEST_TIMEOUT_MS = 2_000;
+const POLL_MS = SNAPSHOT_POLL_MS;
+const PER_REQUEST_TIMEOUT_MS = SNAPSHOT_REQUEST_TIMEOUT_MS;
 
 async function withTimeout<T>(p: Promise<T | null>, ms: number): Promise<T | null> {
   return Promise.race([
@@ -38,8 +38,8 @@ async function pollOnce(cfg: LLMConfig): Promise<HermesSnapshot | null> {
     withTimeout(fetchCapabilities(cfg, sig), PER_REQUEST_TIMEOUT_MS),
     withTimeout(fetchSkills(cfg, sig), PER_REQUEST_TIMEOUT_MS),
     withTimeout(fetchToolsets(cfg, sig), PER_REQUEST_TIMEOUT_MS),
-    withTimeout(new HermesSessionsClient(cfg).list(sig), PER_REQUEST_TIMEOUT_MS),
-    withTimeout(new HermesJobsClient(cfg).list(sig), PER_REQUEST_TIMEOUT_MS),
+    withTimeout(createSessionsClient(cfg).list(sig), PER_REQUEST_TIMEOUT_MS),
+    withTimeout(createJobsClient(cfg).list(sig), PER_REQUEST_TIMEOUT_MS),
   ]);
   // If literally nothing responded, treat as gateway-offline.
   if (!caps && !skills && !toolsets && !sessions && !jobs) return null;
@@ -67,12 +67,7 @@ export function useHermesSnapshot() {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const tick = async () => {
-      const cfg: LLMConfig = {
-        provider: 'hermes-gateway',
-        endpoint: settings.llmEndpoint || defaultEndpoint(),
-        apiKey: settings.llmApiKey || undefined,
-        defaultModel: settings.llmModel || 'default',
-      };
+      const cfg: LLMConfig = buildLLMConfig(settings);
       const snap = await pollOnce(cfg);
       if (!cancelled) setSnapshot(snap);
       if (!cancelled) timer = setTimeout(tick, POLL_MS);

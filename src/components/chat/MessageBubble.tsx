@@ -68,7 +68,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
     <View style={[styles.row, isUser ? styles.rowUser : styles.rowAssistant]}>
       {!isUser ? <MascotAvatar small={isNarrow} /> : null}
 
-      <View style={[
+      <Pressable
+        onLongPress={onLongPress}
+        style={[
         styles.bubble,
         isUser
           ? [styles.bubbleUser, { backgroundColor: accent.accent.fg }]
@@ -173,7 +175,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
             ) : null}
           </>
         )}
-      </View>
+      </Pressable>
     </View>
   );
 }, (prev, next) =>
@@ -182,7 +184,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
   prev.message.role === next.message.role &&
   prev.message.content === next.message.content &&
   prev.message.status === next.message.status &&
-  prev.message.attachments === next.message.attachments,
+  prev.message.attachments === next.message.attachments &&
+  prev.message.toolEvents === next.message.toolEvents &&
+  prev.message.approval === next.message.approval,
 );
 
 // ─── Mascot avatar ───────────────────────────────────────────────────────────
@@ -282,7 +286,7 @@ const QuickReplyChip: React.FC<{
         onBlur={() => setFocused(false)}
         accessibilityRole="button"
         accessibilityLabel={label}
-        style={({ pressed }) => [
+        style={[
           styles.quickReplyChip,
           focused ? styles.quickReplyChipFocused : null,
         ]}

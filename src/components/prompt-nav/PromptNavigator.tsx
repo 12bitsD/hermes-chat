@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { neutral, type, space, radius, useTheme } from '../../theme';
 import { useAppStore } from '../../store/app';
-import { TextField, Button, Panel } from '../win95';
+import { TextField, Button } from '../win95';
 
 export interface PromptNavigatorProps {
   onInsertPrompt?: (body: string) => void;

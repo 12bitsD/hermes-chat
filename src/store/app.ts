@@ -1,6 +1,12 @@
 import { create } from 'zustand';
-import { Conversation, Message, AppSettings, DEFAULT_SETTINGS, PromptTemplate } from '../types';
+import { Conversation, Message, AppSettings, PromptTemplate } from '../types';
 import type { Reachability } from '../services/llm/types';
+import { DEFAULT_SESSION_TITLE } from '../config/app-constants';
+import { createSeedConversation } from '../domain/chat/defaults';
+import { createConversationFromRemoteSession, mergeRemoteMessages } from '../domain/chat/remote-session';
+import { createId, now } from '../domain/ids';
+import { createSeedPrompts } from '../domain/prompts/defaults';
+import { DEFAULT_SETTINGS } from '../domain/settings/defaults';
 
 interface AppState {
   conversations: Record<string, Conversation>;
@@ -28,7 +34,8 @@ interface AppState {
    *  boundary (length of the new array). */
   truncateMessagesAt: (conversationId: string, messageId: string) => number;
   /** Import a remote Hermes session as a local conversation (id is mirrored). */
-  importRemoteSession: (sessionId: string, title: string, messages: any[]) => void;
+  importRemoteSession: (sessionId: string, title: string, messages: unknown[]) => void;
+  mergeRemoteMessages: (conversationId: string, messages: unknown[]) => number;
   clearMessages: (conversationId: string) => void;
 
   addPrompt: (p: Omit<PromptTemplate, 'id' | 'createdAt' | 'usageCount'>) => string;
@@ -54,87 +61,9 @@ export interface HermesSnapshot {
   updatedAt: number;
 }
 
-const now = () => Date.now();
-const uid = () => `${now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-const seedConversationId = uid();
-const seedConversation: Conversation = {
-  id: seedConversationId,
-  title: 'Welcome to Hermes Chat',
-  createdAt: now(),
-  updatedAt: now(),
-  messages: [
-    {
-      id: uid(),
-      role: 'system',
-      status: 'done',
-      createdAt: now() - 6000,
-      content: `# Welcome to Hermes Chat ✦
-
-A clean little chatbot client for talking to **Hermes** — built with Expo + React Native.
-
-## What works in this build
-
-- Flat kawaii aesthetic 🌸
-- Mock streaming LLM responses
-- Markdown rendering (headings / lists / code / tables / blockquote)
-- Right-side prompt template navigator
-- Voice + image attachments (mocked in web)
-- Multiple conversations
-
-## What doesn't yet
-
-- Real Hermes backend (still mock)
-- PDF / PPT in-line preview
-- Real illustrations on every screen
-`,
-    },
-  ],
-};
-
-const seedPrompts: PromptTemplate[] = [
-  {
-    id: uid(),
-    title: 'Explain like I\'m 5',
-    body: 'Explain the following concept as if I were 5 years old, with one concrete example:\n\n{{topic}}',
-    category: 'Learning',
-    pinned: true,
-    usageCount: 0,
-    createdAt: now(),
-  },
-  {
-    id: uid(),
-    title: 'Code review',
-    body: 'Review this code for bugs, performance, and readability. Be specific — quote line numbers and propose exact edits:\n\n```\n{{code}}\n```',
-    category: 'Coding',
-    usageCount: 0,
-    createdAt: now(),
-  },
-  {
-    id: uid(),
-    title: 'Summarize article',
-    body: 'Summarize the following article in 5 bullet points and one closing one-sentence takeaway:\n\n{{article}}',
-    category: 'Reading',
-    usageCount: 0,
-    createdAt: now(),
-  },
-  {
-    id: uid(),
-    title: 'Brainstorm names',
-    body: 'Brainstorm 10 product name ideas for: {{product}}. Each should be 1-2 syllables, easy to spell, no trademark conflicts in tech.',
-    category: 'Product',
-    usageCount: 0,
-    createdAt: now(),
-  },
-  {
-    id: uid(),
-    title: 'Translate CN→EN',
-    body: 'Translate the following Chinese text into natural, idiomatic English (not literal):\n\n{{text}}',
-    category: 'Language',
-    usageCount: 0,
-    createdAt: now(),
-  },
-];
+const seedConversation = createSeedConversation();
+const seedConversationId = seedConversation.id;
+const seedPrompts = createSeedPrompts();
 
 export const useAppStore = create<AppState>((set, get) => ({
   conversations: { [seedConversationId]: seedConversation },
@@ -157,10 +86,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   createConversation: (title) => {
-    const id = uid();
+    const id = createId();
     const conv: Conversation = {
       id,
-      title: title ?? 'New conversation',
+      title: title ?? DEFAULT_SESSION_TITLE,
       createdAt: now(),
       updatedAt: now(),
       messages: [],
@@ -181,25 +110,21 @@ export const useAppStore = create<AppState>((set, get) => ({
    * a new one).
    */
   importRemoteSession: (sessionId, title, messages) => {
-    const conv: Conversation = {
-      id: sessionId, // mirror — same id, same session
-      title: title || sessionId,
-      createdAt: now(),
-      updatedAt: now(),
-      messages: (messages || []).map((m: any, i: number) => ({
-        id: m.id ?? `imported-${i}-${Math.random().toString(36).slice(2, 8)}`,
-        role: m.role ?? 'user',
-        content: typeof m.content === 'string' ? m.content : (m.text ?? ''),
-        status: 'done' as const,
-        createdAt: m.created_at ?? m.createdAt ?? now(),
-      })),
-    };
+    const conv = createConversationFromRemoteSession(sessionId, title, messages);
     set((s) => {
       // If a local conversation with this id already exists, merge.
       const existing = s.conversations[sessionId];
       if (existing) {
         return {
-          conversations: { ...s.conversations, [sessionId]: { ...existing, ...conv, id: sessionId } },
+          conversations: {
+            ...s.conversations,
+            [sessionId]: {
+              ...existing,
+              ...conv,
+              messages: mergeRemoteMessages(existing.messages, messages).messages,
+              id: sessionId,
+            },
+          },
           conversationOrder: s.conversationOrder.includes(sessionId) ? s.conversationOrder : [sessionId, ...s.conversationOrder],
           activeConversationId: sessionId,
         };
@@ -210,6 +135,24 @@ export const useAppStore = create<AppState>((set, get) => ({
         activeConversationId: sessionId,
       };
     });
+  },
+
+  mergeRemoteMessages: (conversationId, messages) => {
+    let added = 0;
+    set((s) => {
+      const c = s.conversations[conversationId];
+      if (!c) return {};
+      const merged = mergeRemoteMessages(c.messages, messages);
+      added = merged.added;
+      if (added === 0) return {};
+      return {
+        conversations: {
+          ...s.conversations,
+          [conversationId]: { ...c, messages: merged.messages, updatedAt: now() },
+        },
+      };
+    });
+    return added;
   },
 
   setActiveConversation: (id) => set({ activeConversationId: id }),
@@ -286,7 +229,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   addPrompt: (p) => {
-    const id = uid();
+    const id = createId();
     const prompt: PromptTemplate = { id, createdAt: now(), usageCount: 0, ...p };
     set((s) => ({
       prompts: { ...s.prompts, [id]: prompt },

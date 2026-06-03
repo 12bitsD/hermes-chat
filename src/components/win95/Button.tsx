@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { Pressable, Text, StyleSheet, TextStyle, ViewStyle, GestureResponderEvent, Animated, Easing } from 'react-native';
-import { neutral, type, space, radius } from '../../theme';
+import { Pressable, Text, StyleSheet, TextStyle, ViewStyle, GestureResponderEvent, Animated } from 'react-native';
+import { type, space, radius } from '../../theme';
 import { useTheme } from '../../theme';
 
 export interface Win95ButtonProps {
