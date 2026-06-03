@@ -27,6 +27,7 @@ interface AppState {
   setActiveConversation: (id: string) => void;
   deleteConversation: (id: string) => void;
   renameConversation: (id: string, title: string) => void;
+  togglePinConversation: (id: string) => void;
   appendMessage: (conversationId: string, message: Message) => void;
   updateMessage: (conversationId: string, messageId: string, patch: Partial<Message>) => void;
   /** Drop a message and everything after it. Used by 'Edit & resend' to
@@ -170,6 +171,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       const c = s.conversations[id];
       if (!c) return {};
       return { conversations: { ...s.conversations, [id]: { ...c, title, updatedAt: now() } } };
+    }),
+
+  togglePinConversation: (id: string) =>
+    set((s) => {
+      const c = s.conversations[id];
+      if (!c) return {};
+      const wasPinned = !!c.pinned;
+      return {
+        conversations: {
+          ...s.conversations,
+          [id]: { ...c, pinned: !wasPinned, updatedAt: now() },
+        },
+        // Pin to top of order list (unpin: keep current order).
+        conversationOrder: wasPinned
+          ? s.conversationOrder
+          : [id, ...s.conversationOrder.filter((x) => x !== id)],
+      };
     }),
 
   appendMessage: (conversationId, message) =>
