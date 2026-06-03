@@ -37,6 +37,9 @@ export function syncLLMFromSettings() {
     apiKey: s.llmApiKey || undefined,
     defaultModel: s.llmModel || 'default',
   });
+  // Expose a manual trigger for debugging: in dev, the web console can
+  // call `window.__hermes_resync?.()` after editing settings/storage.
+  if (typeof window !== 'undefined') (window as any).__hermes_resync = syncLLMFromSettings;
 }
 
 /** Touch a setting — re-syncs the LLM client so changes take effect immediately. */
@@ -72,13 +75,28 @@ export function initPersistence() {
       try {
         const parsed = JSON.parse(raw);
         useAppStore.setState(parsed);
-        // After hydration, push settings into the LLM client
+        // After hydration, push settings into the LLM client. This is
+        // the single most important call in the boot path — without it
+        // the cached LLMConfig keeps the default (empty) API key from
+        // before AsyncStorage was read, and every chat send returns 401
+        // until the user manually opens Settings (which triggers the
+        // updateSetting re-sync).
         syncLLMFromSettings();
       } catch (e) {
         console.warn('[persistence] failed to parse stored state, ignoring', e);
       }
     })
     .catch((e) => console.warn('[persistence] hydrate failed', e));
+
+  // 1b) Belt-and-suspenders: re-sync the LLM client any time the
+  // settings object reference changes. initPersistence only runs once,
+  // so this is what catches dev/hot-reload cases where settings get
+  // mutated without going through updateSetting().
+  useAppStore.subscribe((next, prev) => {
+    if (next.settings !== prev.settings) {
+      syncLLMFromSettings();
+    }
+  });
 
   // 2) Save on change
   useAppStore.subscribe((next) => {

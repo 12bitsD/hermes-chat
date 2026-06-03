@@ -17,6 +17,7 @@ import { haptic } from '../../utils/haptic';
 import { throttle } from '../../utils/perf';
 import { startVoice, requestVoicePermission } from '../../utils/voice';
 import { getHermesClient } from '../../services/llm';
+import type { ToolEvent } from '../../types';
 
 /**
  * Scroll-to-bottom smoothing target. RN ScrollView can't animate to "the
@@ -286,6 +287,10 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
     haptic('light');
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    // Set the run-start mirror so the RunHeader's live timer ticks
+    // from the moment the user hits Send, regardless of which code
+    // path (runs-mode or pure streamChat) actually completes the turn.
+    activeRunStartedAtRef.current = Date.now();
 
     // Throttle store updates so a high-frequency stream doesn't re-render the
     // whole list on every char. We still flush the very last update on done/error
@@ -590,6 +595,9 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
           pendingApproval={pendingApproval}
           runStartedAtRef={activeRunStartedAtRef}
           onStop={onStop}
+          activeTools={streaming
+            ? (messages.find((m) => m.status === 'streaming')?.toolEvents ?? []).filter((t) => t.status === 'running')
+            : []}
         />
         <ScrollView
           ref={scrollRef}
@@ -729,7 +737,8 @@ const RunHeader: React.FC<{
   pendingApproval: any;
   runStartedAtRef: React.MutableRefObject<number | null>;
   onStop: () => void;
-}> = ({ streaming, pendingApproval, runStartedAtRef, onStop }) => {
+  activeTools?: ToolEvent[];
+}> = ({ streaming, pendingApproval, runStartedAtRef, onStop, activeTools }) => {
   const accent = useTheme();
   const [, force] = useState(0);
   const pulse = useRef(new Animated.Value(0)).current;
@@ -765,17 +774,39 @@ const RunHeader: React.FC<{
     ? { color: '#000' }
     : { color: accent.accent.fg };
 
-  const label = isApproval ? '🔑 awaiting your approval' : '⚡ Hermes is running';
   const dotOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
 
+  // Cap preview to first line, max ~40 chars, so the bar stays one line tall.
+  const summarize = (t: ToolEvent) => {
+    const raw = (t.preview ?? '').replace(/\s+/g, ' ').trim();
+    if (raw) return raw.length > 40 ? raw.slice(0, 40) + '…' : raw;
+    return 'running…';
+  };
+
   return (
-    <View style={[runStyles.bar, bg]}>
-      <Animated.View style={[runStyles.dot, { opacity: dotOpacity }]} />
-      <Text style={[runStyles.label, fg]} numberOfLines={1}>{label}</Text>
-      {!isApproval ? <Text style={[runStyles.elapsed, fg]}>{elapsedStr}</Text> : null}
-      <Pressable onPress={onStop} hitSlop={8} style={runStyles.stopBtn}>
-        <Text style={[runStyles.stopText, fg]}>■ Stop</Text>
-      </Pressable>
+    <View>
+      <View style={[runStyles.bar, bg]}>
+        <Animated.View style={[runStyles.dot, { opacity: dotOpacity }]} />
+        <Text style={[runStyles.label, fg]} numberOfLines={1}>
+          {isApproval ? '🔑 awaiting your approval' : activeTools && activeTools.length > 0
+            ? `⚡ ${activeTools.length} tool${activeTools.length === 1 ? '' : 's'} running`
+            : '⚡ Hermes is running'}
+        </Text>
+        {!isApproval ? <Text style={[runStyles.elapsed, fg]}>{elapsedStr}</Text> : null}
+        <Pressable onPress={onStop} hitSlop={8} style={runStyles.stopBtn}>
+          <Text style={[runStyles.stopText, fg]}>■ Stop</Text>
+        </Pressable>
+      </View>
+      {!isApproval && activeTools && activeTools.length > 0 ? (
+        <View style={runStyles.toolList}>
+          {activeTools.map((t) => (
+            <Text key={t.id} style={runStyles.toolRow} numberOfLines={1}>
+              <Text style={runStyles.toolName}>🔧 {t.tool}</Text>
+              {t.preview ? <Text style={runStyles.toolPreview}>  {summarize(t)}</Text> : null}
+            </Text>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -791,6 +822,14 @@ const runStyles = StyleSheet.create({
   elapsed: { ...type.captionSm, fontSize: 11, fontFamily: 'Courier' },
   stopBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: '#00000022' },
   stopText: { ...type.captionSm, fontSize: 11, fontWeight: '700' },
+  toolList: {
+    marginHorizontal: 8, marginTop: 2, marginBottom: 4,
+    paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: '#0000000d', borderRadius: 6,
+  },
+  toolRow: { ...type.captionSm, fontSize: 11, lineHeight: 16 },
+  toolName: { fontWeight: '700', color: '#0E7490' },
+  toolPreview: { color: '#444', fontStyle: 'italic' },
 });
 
 const styles = StyleSheet.create({
