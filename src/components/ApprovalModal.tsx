@@ -1,15 +1,26 @@
 /**
  * ApprovalModal — surfaces a Hermes agent's approval.required event as a
- * blocking prompt the user can approve, deny, or annotate.
+ * blocking prompt the user can approve or deny.
  *
  * The Hermes gateway emits `approval.required` over /v1/runs/{run_id}/events
  * when the agent wants to perform a tool the user gated behind a manual
  * confirm step. We translate that into a modal here.
+ *
+ * Phase 63 #10: This modal is now reserved for HIGH-RISK tools
+ * (shell / write_file / delete_file / etc.). Low-risk tools
+ * (read_file / web_search) use ApprovalToast instead — see
+ * `domain/tools/risk.ts` and `toolRiskLevel()`.
+ *
+ * The previous version had a 'Note (optional)' input and a raw JSON
+ * args dump. Both were removed: the modal now shows a one-line
+ * human-readable intent (via `describeToolIntent`) and trusts the
+ * user to read the prompt + the kawaii verbs (🌸 Allow / 🌧 Deny).
  */
 
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, Pressable, TextInput, ScrollView } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, Modal, Pressable, ScrollView } from 'react-native';
 import { neutral, type, space, radius, useTheme } from '../theme';
+import { describeToolIntent } from '../domain/tools/risk';
 
 export interface ApprovalModalProps {
   open: boolean;
@@ -18,14 +29,13 @@ export interface ApprovalModalProps {
   prompt: string;
   tool: string;
   args: unknown;
-  onResolve: (decision: 'approve' | 'deny', note?: string) => void;
+  onResolve: (decision: 'approve' | 'deny') => void;
 }
 
 export const ApprovalModal: React.FC<ApprovalModalProps> = ({
   open, runId, approvalId, prompt, tool, args, onResolve,
 }) => {
   const accent = useTheme();
-  const [note, setNote] = useState('');
 
   if (!open || !runId || !approvalId) return null;
 
@@ -35,60 +45,46 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
         <Pressable style={StyleSheet.absoluteFill} onPress={() => onResolve('deny')} />
       </View>
       <View style={[styles.card, { borderColor: accent.accent.fg }]}>
-        <Text style={styles.title}>⚠ Agent wants permission</Text>
+        <Text style={styles.title}>⚠ Hermes wants to {tool.replace(/_/g, ' ')}</Text>
         <Text style={styles.subtitle}>
-          Hermes is asking to run a tool on your behalf. Review the details
-          below and decide whether to allow it.
+          This is a high-risk tool — review what it does, then allow or deny.
         </Text>
 
-        <View style={[styles.metaRow, { backgroundColor: neutral.surfaceMuted }]}>
-          <Text style={styles.metaLabel}>Run</Text>
-          <Text style={styles.metaValue} numberOfLines={1}>{runId}</Text>
-        </View>
         <View style={[styles.metaRow, { backgroundColor: neutral.surfaceMuted }]}>
           <Text style={styles.metaLabel}>Tool</Text>
           <Text style={styles.metaValue}>{tool}</Text>
         </View>
-        <Text style={styles.promptLabel}>Prompt</Text>
+
+        <Text style={styles.promptLabel}>What it does</Text>
         <ScrollView style={styles.promptBox}>
-          <Text style={styles.promptText}>{prompt || '(no prompt text)'}</Text>
+          <Text style={styles.promptText}>{describeToolIntent(tool, args)}</Text>
         </ScrollView>
 
-        <Text style={styles.argsLabel}>Arguments</Text>
-        <ScrollView style={styles.argsBox}>
-          <Text style={styles.argsText} numberOfLines={6}>
-            {args ? JSON.stringify(args, null, 2) : '(none)'}
-          </Text>
-        </ScrollView>
-
-        <Text style={styles.noteLabel}>Note (optional)</Text>
-        <TextInput
-          value={note}
-          onChangeText={setNote}
-          placeholder="e.g. only if the URL points at example.com"
-          placeholderTextColor={neutral.inkMuted}
-          multiline
-          style={styles.noteInput}
-        />
+        {prompt ? (
+          <>
+            <Text style={styles.promptLabel}>Hermes says</Text>
+            <Text style={styles.quote}>{prompt}</Text>
+          </>
+        ) : null}
 
         <View style={styles.actions}>
           <Pressable
-            onPress={() => onResolve('deny', note.trim() || undefined)}
+            onPress={() => onResolve('deny')}
             style={({ pressed }) => [
               styles.btn, styles.btnDeny,
               pressed ? styles.btnPressed : null,
             ]}
           >
-            <Text style={styles.btnDenyText}>Deny ✕</Text>
+            <Text style={styles.btnDenyText}>🌧 Deny</Text>
           </Pressable>
           <Pressable
-            onPress={() => onResolve('approve', note.trim() || undefined)}
+            onPress={() => onResolve('approve')}
             style={({ pressed }) => [
               styles.btn, { backgroundColor: accent.accent.fg, borderColor: accent.accent.fg },
               pressed ? styles.btnPressed : null,
             ]}
           >
-            <Text style={styles.btnApproveText}>Approve ✓</Text>
+            <Text style={styles.btnApproveText}>🌸 Allow</Text>
           </Pressable>
         </View>
       </View>
@@ -116,16 +112,11 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: neutral.border,
   },
   promptText: { ...type.body, color: neutral.ink, fontSize: 13 },
-  argsLabel: { ...type.caption, color: neutral.inkMuted, marginTop: space.sm, fontWeight: '600' },
-  argsBox: {
-    backgroundColor: neutral.bg, padding: space.xs, borderRadius: radius.sm, maxHeight: 100,
-    borderWidth: 1, borderColor: neutral.border,
-  },
-  argsText: { ...type.code, color: neutral.ink, fontSize: 11 },
-  noteLabel: { ...type.caption, color: neutral.inkMuted, marginTop: space.sm, fontWeight: '600' },
-  noteInput: {
-    ...type.body, color: neutral.ink, backgroundColor: neutral.bg, padding: space.xs,
-    borderRadius: radius.sm, borderWidth: 1, borderColor: neutral.border, minHeight: 60, textAlignVertical: 'top',
+  quote: {
+    ...type.body, color: neutral.ink, fontSize: 12, fontStyle: 'italic',
+    backgroundColor: neutral.bg, padding: space.xs, borderRadius: radius.sm,
+    borderLeftWidth: 2, borderLeftColor: '#FFB6C1',
+    marginTop: 4,
   },
   actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: space.md },
   btn: {

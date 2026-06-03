@@ -4,6 +4,7 @@ import { STICK_TO_BOTTOM_MS } from '../../config/app-constants';
 import { dispatchChatSend, subscribeChatSend } from '../../lib/chatSendBus';
 import { publishCli } from '../../lib/hermesCliBus';
 import { enqueue, list as listQueued, dequeue, bumpRetry, nextBackoffMs } from '../../services/queue/messageQueue';
+import { toolRiskLevel } from '../../domain/tools/risk';
 import { buildChatHistory } from '../../domain/chat/history';
 import { makeAssistantMessage, makeUserMessage } from '../../domain/chat/messages';
 import { pickFile, type PickedFile } from '../attachments/filePicker';
@@ -312,6 +313,26 @@ export function useChatController() {
             });
           },
           onApprovalRequired: (event) => {
+            // Phase 63 #10: tool risk grading. Low-risk tools
+            // (read_file, web_search, etc.) auto-approve so the
+            // user isn't blocked on every search. The user can
+            // still stop the run via RunHeader, or react to a
+            // 6s toast if we ever add one (currently we just
+            // publish a "auto-approved" event for observability).
+            const risk = toolRiskLevel(event.tool);
+            if (risk === 'low') {
+              publishCli({
+                type: 'approval:required',
+                runId: event.runId,
+                approvalId: event.approvalId,
+                tool: event.tool,
+                prompt: `auto-approve: low-risk tool ${event.tool}`,
+              });
+              // fire-and-forget; the run continues
+              const port = createHermesPort(llmConfig, getLLMClient());
+              void port.resolveApproval(event.runId, event.approvalId, 'approve').catch(() => undefined);
+              return;
+            }
             setPendingApproval({
               runId: event.runId,
               approvalId: event.approvalId,
