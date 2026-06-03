@@ -45,6 +45,7 @@ export const MainScreen: React.FC = () => {
   const setActive = useAppStore((s) => s.setActiveConversation);
   const createConv = useAppStore((s) => s.createConversation);
   const renameConv = useAppStore((s) => s.renameConversation);
+  const togglePinConv = useAppStore((s) => s.togglePinConversation);
   const deleteConv = useAppStore((s) => s.deleteConversation);
   const mergeRemoteMessages = useAppStore((s) => s.mergeRemoteMessages);
   const importRemoteSession = useAppStore((s) => s.importRemoteSession);
@@ -228,6 +229,8 @@ export const MainScreen: React.FC = () => {
           onPick={(id) => { setActive(id); setDrawerOpen(false); }}
           onNew={() => { createConv(); setDrawerOpen(false); }}
           onDelete={(id) => deleteConv(id)}
+          onPin={(id) => togglePinConv(id)}
+          onRename={(id, title) => renameConv(id, title)}
           onPickRemote={importRemote}
           remoteSessions={hermesSnapshot?.sessions}
           remoteJobs={hermesSnapshot?.jobs}

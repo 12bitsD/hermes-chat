@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Modal, Animated } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Modal, Animated, TextInput } from 'react-native';
 import { neutral, type, space, radius, useTheme } from '../../theme';
 import type { Conversation } from '../../types';
 import { timeAgo } from '../../utils/time';
+import { haptic } from '../../utils/haptic';
 
 export interface SessionDrawerProps {
   open: boolean;
@@ -13,6 +14,8 @@ export interface SessionDrawerProps {
   onPick: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  onPin: (id: string) => void;
+  onRename: (id: string, title: string) => void;
   onPickRemote?: (id: string) => void;
   remoteSessions?: { id: string; title?: string; messageCount?: number; updatedAt?: number }[];
   remoteJobs?: { id: string }[];
@@ -23,7 +26,7 @@ export interface SessionDrawerProps {
 
 export const SessionDrawer: React.FC<SessionDrawerProps> = ({
   open, onClose, conversations, order, activeId,
-  onPick, onNew, onDelete, onPickRemote,
+  onPick, onNew, onDelete, onPin, onRename, onPickRemote,
   remoteSessions, remoteJobs, remoteSkills, remoteGatewayReachable,
   insets,
 }) => {
@@ -36,6 +39,28 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
 
   const translateX = slideAnim.interpolate({ inputRange: [-1, 0], outputRange: [-340, 0] });
   const backdropOpacity = slideAnim.interpolate({ inputRange: [-1, 0], outputRange: [0, 0.4] });
+
+  // Long-press menu state — which conversation's menu is open.
+  const [menuId, setMenuId] = useState<string | null>(null);
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+
+  // Sort order: pinned conversations first, then by updatedAt desc.
+  // Within the pinned group, keep the existing order (which is
+  // already set to put newly-pinned items at the head by the store).
+  const sortedOrder = useMemo(() => {
+    return [...order].sort((a, b) => {
+      const ca = conversations[a];
+      const cb = conversations[b];
+      const ap = !!ca?.pinned;
+      const bp = !!cb?.pinned;
+      if (ap !== bp) return ap ? -1 : 1;
+      return (cb?.updatedAt ?? 0) - (ca?.updatedAt ?? 0);
+    });
+  }, [order, conversations]);
+
+  const menuConv = menuId ? conversations[menuId] : null;
+  const renameConv = renameId ? conversations[renameId] : null;
 
   return (
     <Modal visible={open} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
@@ -99,7 +124,7 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
           ) : null}
 
           <Text style={styles.drawerSectionHeader}>📱 This device</Text>
-          {order.map((id) => {
+          {sortedOrder.map((id) => {
             const conversation = conversations[id];
             if (!conversation) return null;
             const isActive = id === activeId;
@@ -107,13 +132,14 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
               <Pressable
                 key={id}
                 onPress={() => onPick(id)}
-                onLongPress={() => onDelete(id)}
+                onLongPress={() => { haptic('light'); setMenuId(id); }}
                 style={({ pressed }) => [
                   styles.drawerItem,
                   isActive ? [styles.drawerItemActive, { backgroundColor: accent.accent.soft }] : null,
                   pressed ? styles.drawerItemPressed : null,
                 ]}
               >
+                {conversation.pinned ? <Text style={styles.pinIndicator}>📌</Text> : null}
                 <Text numberOfLines={1} style={[styles.drawerItemText, isActive ? styles.drawerItemTextActive : null]}>
                   {conversation.title}
                 </Text>
@@ -131,8 +157,90 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
             </Text>
           ) : null}
         </ScrollView>
-        <Text style={styles.drawerHint}>Tap switch · long-press delete</Text>
+        <Text style={styles.drawerHint}>Tap switch · long-press menu</Text>
       </Animated.View>
+
+      {/* Long-press menu: a small bottom-sheet modal with 3 actions
+          (Pin/Unpin, Rename, Delete). Replaces the previous long-
+          press → delete behavior, since the user can now also pin
+          and rename from the same gesture. */}
+      <Modal visible={!!menuConv} transparent animationType="slide" onRequestClose={() => setMenuId(null)}>
+        <View style={styles.menuRoot}>
+          <Pressable style={styles.menuBackdrop} onPress={() => setMenuId(null)} />
+          <View style={styles.menuSheet}>
+            <View style={styles.menuHandle} />
+            <Text style={styles.menuTitle} numberOfLines={1}>{menuConv?.title ?? 'Session'}</Text>
+            <Pressable
+              onPress={() => { haptic('light'); if (menuId) { onPin(menuId); setMenuId(null); } }}
+              style={({ pressed }) => [styles.menuItem, pressed ? styles.menuItemPressed : null]}
+            >
+              <Text style={styles.menuEmoji}>{menuConv?.pinned ? '📌' : '📍'}</Text>
+              <Text style={styles.menuLabel}>{menuConv?.pinned ? 'Unpin' : 'Pin'}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { if (menuId) { setRenameId(menuId); setRenameDraft(menuConv?.title ?? ''); setMenuId(null); } }}
+              style={({ pressed }) => [styles.menuItem, pressed ? styles.menuItemPressed : null]}
+            >
+              <Text style={styles.menuEmoji}>✏️</Text>
+              <Text style={styles.menuLabel}>Rename</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { haptic('warning'); if (menuId) { onDelete(menuId); setMenuId(null); } }}
+              style={({ pressed }) => [styles.menuItem, pressed ? styles.menuItemPressed : null]}
+            >
+              <Text style={styles.menuEmoji}>🗑</Text>
+              <Text style={[styles.menuLabel, styles.menuLabelDestructive]}>Delete</Text>
+            </Pressable>
+            <Pressable onPress={() => setMenuId(null)} style={styles.menuCancel}>
+              <Text style={styles.menuCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Rename sheet: simple inline title editor. Save commits the
+          rename and closes; cancel discards. */}
+      <Modal visible={!!renameConv} transparent animationType="slide" onRequestClose={() => setRenameId(null)}>
+        <View style={styles.menuRoot}>
+          <Pressable style={styles.menuBackdrop} onPress={() => setRenameId(null)} />
+          <View style={[styles.menuSheet, styles.renameSheet]}>
+            <View style={styles.menuHandle} />
+            <Text style={styles.menuTitle}>Rename session</Text>
+            <TextInput
+              value={renameDraft}
+              onChangeText={setRenameDraft}
+              autoFocus
+              style={styles.renameInput}
+              placeholder="Session title"
+              placeholderTextColor={neutral.inkMuted}
+              onSubmitEditing={() => {
+                if (renameId && renameDraft.trim()) {
+                  haptic('success');
+                  onRename(renameId, renameDraft.trim());
+                }
+                setRenameId(null);
+              }}
+            />
+            <View style={styles.renameRow}>
+              <Pressable onPress={() => setRenameId(null)} style={[styles.renameBtn, styles.renameBtnGhost]}>
+                <Text style={styles.renameBtnGhostText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  if (renameId && renameDraft.trim()) {
+                    haptic('success');
+                    onRename(renameId, renameDraft.trim());
+                  }
+                  setRenameId(null);
+                }}
+                style={[styles.renameBtn, styles.renameBtnPrimary]}
+              >
+                <Text style={styles.renameBtnPrimaryText}>Save</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 };
@@ -173,4 +281,44 @@ const styles = StyleSheet.create({
   drawerSectionHeader: { ...type.captionXs, color: neutral.inkMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, paddingHorizontal: 4, paddingBottom: 4, paddingTop: 2 },
   drawerItemRemote: { borderLeftWidth: 2, borderLeftColor: '#FBBF24' },
   drawerHint: { ...type.caption, color: neutral.inkMuted, textAlign: 'center', padding: space.sm, fontStyle: 'italic' },
+  pinIndicator: { fontSize: 12, marginRight: 4 },
+
+  // Long-press menu sheet styles
+  menuRoot: { ...StyleSheet.absoluteFill, justifyContent: 'flex-end' },
+  menuBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: '#0006' },
+  menuSheet: {
+    backgroundColor: neutral.surface,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingHorizontal: space.md, paddingTop: space.sm, paddingBottom: space.lg,
+  },
+  menuHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: neutral.border, alignSelf: 'center', marginBottom: space.sm },
+  menuTitle: { ...type.title, color: neutral.ink, fontSize: 16, marginBottom: space.xs },
+  menuItem: {
+    flexDirection: 'row', alignItems: 'center', gap: space.sm,
+    paddingVertical: 12, paddingHorizontal: 8, borderRadius: radius.sm,
+  },
+  menuItemPressed: { backgroundColor: neutral.surfaceMuted },
+  menuEmoji: { fontSize: 20, width: 28, textAlign: 'center' },
+  menuLabel: { ...type.body, color: neutral.ink, fontSize: 15 },
+  menuLabelDestructive: { color: '#DC2626' },
+  menuCancel: {
+    marginTop: space.sm, paddingVertical: 12,
+    backgroundColor: neutral.surfaceMuted, borderRadius: radius.md, alignItems: 'center',
+  },
+  menuCancelText: { ...type.uiBold, color: neutral.ink, fontSize: 14 },
+
+  // Rename sheet
+  renameSheet: { gap: space.sm },
+  renameInput: {
+    ...type.body, color: neutral.ink, fontSize: 15,
+    borderWidth: 1, borderColor: neutral.border, borderRadius: radius.md,
+    paddingHorizontal: space.sm, paddingVertical: 10,
+    backgroundColor: neutral.bg,
+  },
+  renameRow: { flexDirection: 'row', gap: space.sm, marginTop: space.xs },
+  renameBtn: { flex: 1, paddingVertical: 10, borderRadius: radius.md, alignItems: 'center' },
+  renameBtnGhost: { backgroundColor: neutral.surfaceMuted },
+  renameBtnGhostText: { ...type.uiBold, color: neutral.ink, fontSize: 14 },
+  renameBtnPrimary: { backgroundColor: '#FFB6C1' },
+  renameBtnPrimaryText: { ...type.uiBold, color: '#fff', fontSize: 14 },
 });
