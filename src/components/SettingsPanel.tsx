@@ -32,6 +32,7 @@ import { HERMES_CHAT_ENDPOINT_PATH, HERMES_GATEWAY_PORT, SNAPSHOT_POLL_MS } from
 import { CAPABILITY_LABELS } from '../services/llm/capabilities';
 import { useSettingsController } from '../features/settings/useSettingsController';
 import { haptic } from '../utils/haptic';
+import { PERSONA_PRESETS, detectActivePersona } from '../domain/settings/personas';
 
 export interface SettingsPanelProps {
   open: boolean;
@@ -136,6 +137,34 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
             <Section title="Agent">
               <Text style={styles.label}>Model id (or "default")</Text>
               <TextField value={model} onChangeText={setModel} placeholder="default" />
+
+              <Text style={styles.label}>Persona</Text>
+              <Text style={styles.hint}>Pick a starting point. Edit below to customize.</Text>
+              <View style={styles.personaRow}>
+                {PERSONA_PRESETS.map((p) => {
+                  const active = systemPrompt === p.systemPrompt;
+                  return (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => { haptic('light'); setSystemPrompt(p.systemPrompt); }}
+                      style={({ pressed }) => [
+                        styles.personaChip,
+                        active ? [styles.personaChipActive, { borderColor: accent.accent.fg, backgroundColor: accent.accent.soft }] : null,
+                        pressed ? styles.personaChipPressed : null,
+                      ]}
+                    >
+                      <Text style={styles.personaEmoji}>{p.emoji}</Text>
+                      <Text style={[styles.personaLabel, active ? styles.personaLabelActive : null]}>{p.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {(() => {
+                const active = detectActivePersona(systemPrompt);
+                return active ? (
+                  <Text style={styles.capsItemBlurb}>{active.hint}</Text>
+                ) : null;
+              })()}
 
               <Text style={styles.label}>System prompt</Text>
               <TextField
@@ -478,6 +507,17 @@ const styles = StyleSheet.create({
   capsItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, paddingVertical: 6, borderRadius: radius.sm, backgroundColor: neutral.surface },
   capsItemOn: {},
   capsItemOff: { opacity: 0.55 },
+  personaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 },
+  personaChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.sm,
+    borderWidth: 1, borderColor: neutral.border, backgroundColor: neutral.bg,
+  },
+  personaChipActive: { borderWidth: 1.5 },
+  personaChipPressed: { opacity: 0.7, transform: [{ scale: 0.97 }] },
+  personaEmoji: { fontSize: 14 },
+  personaLabel: { ...type.captionSm, color: neutral.inkSoft, fontWeight: '500' },
+  personaLabelActive: { color: 'inherit', fontWeight: '600' },
   capsItemMark: { fontSize: 14, fontWeight: '700', width: 14, textAlign: 'center' },
   capsItemMarkOn: { color: neutral.ok },
   capsItemMarkOff: { color: neutral.inkMuted },
