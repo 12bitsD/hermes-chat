@@ -8,13 +8,15 @@ import { Button } from '../win95';
 import { MessageBubble } from './MessageBubble';
 import { EmptyState } from './EmptyState';
 import { ApprovalModal } from '../ApprovalModal';
+import { QuickActionSheet } from './QuickActionSheet';
+import { useAppStore } from '../../store/app';
 import { FileCard } from './FileCard';
 import { useChatController } from '../../features/chat/useChatController';
 import { isNarrow } from '../../utils/platform';
 import { haptic } from '../../utils/haptic';
 import type { ToolEvent } from '../../types';
 
-export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer }) => {
+export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = () => {
   const accent = useTheme();
   const scrollRef = useRef<ScrollView | null>(null);
   const {
@@ -52,6 +54,33 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
   const stickToBottom = useCallback(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
   }, []);
+
+  // EmptyState quick action sheet — when the user taps a primary card
+  // (Jobs / Tool / Activity), we open a bottom sheet listing the
+  // relevant items. "last-turns" instead scrolls to the bottom of
+  // the current conversation (no sheet).
+  type EmptySheet = 'jobs' | 'tool' | 'activity' | null;
+  const [openSheet, setOpenSheet] = useState<EmptySheet>(null);
+
+  const scrollToLastTurns = useCallback(() => {
+    if (messages.length === 0) return;
+    stickToBottom();
+  }, [messages.length, stickToBottom]);
+
+  // Pull Hermes snapshot for the Jobs / Tool / Activity sheets. We
+  // read the live state directly (not a hook subscription) because
+  // the sheets are short-lived and we want a fresh snapshot on open.
+  const hermesSnapshot = useAppStore((s) => s.hermesSnapshot);
+  const conversations = useAppStore((s) => s.conversations);
+  const setActiveConversation = useAppStore((s) => s.setActiveConversation);
+  const recentSessions = (hermesSnapshot?.sessions ?? [])
+    .filter((s) => Date.now() - (s.updatedAt ?? 0) < 60 * 60 * 1000)
+    .slice(0, 8);
+  const failedOrQueuedJobs = (hermesSnapshot?.jobs ?? [])
+    .filter((j) => j.state === 'failed' || j.state === 'queued')
+    .slice(0, 8);
+  const toolsets = (hermesSnapshot?.toolsets ?? []).slice(0, 12);
+  const lastTurnsCount = Math.max(0, messages.length - 1);
 
   useEffect(() => {
     if (messages.length > 0) stickToBottom();
@@ -94,11 +123,19 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
             {visibleMessages.length === 0 ? (
               <EmptyState
                 status={providerOk === null ? 'connecting' : providerOk.ok ? 'idle' : providerOk.status === 'no-auth' ? 'auth-needed' : 'offline'}
+                badges={{
+                  jobs: failedOrQueuedJobs.length > 0 ? String(failedOrQueuedJobs.length) : undefined,
+                  tool: toolsets.length > 0 ? String(toolsets.length) : undefined,
+                  activity: recentSessions.length > 0 ? String(recentSessions.length) : undefined,
+                  'last-turns': lastTurnsCount > 0 ? String(lastTurnsCount) : undefined,
+                }}
                 onAction={(id) => {
                   if (id === 'voice') toggleVoice();
                   else if (id === 'photo') attachFile();
-                  else if (id === 'new-session') createConversation();
-                  else if (id === 'open-existing') onOpenDrawer?.();
+                  else if (id === 'last-turns') scrollToLastTurns();
+                  else if (id === 'jobs') setOpenSheet('jobs');
+                  else if (id === 'tool') setOpenSheet('tool');
+                  else if (id === 'activity') setOpenSheet('activity');
                 }}
               />
             ) : (
@@ -197,6 +234,83 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
         tool={pendingApproval?.tool ?? ''}
         args={pendingApproval?.args}
         onResolve={resolveApproval}
+      />
+
+      {/* Quick action sheets — bottom-sheet modals for Jobs / Tool /
+          Activity. The sheet items are sourced from the live Hermes
+          snapshot (30s polling) and dispatch straight to existing
+          flows: jobs are a no-op for now (Phase 65+), tools dispatch
+          a "run tool" prompt via the chat send bus, sessions activate
+          a local conversation with the same id (creating it locally
+          if missing so the user can write to it). */}
+      <QuickActionSheet
+        visible={openSheet === 'jobs'}
+        title="Background jobs"
+        subtitle={failedOrQueuedJobs.length === 0
+          ? 'Nothing queued or failed. All clear on your computer.'
+          : `${failedOrQueuedJobs.length} need your attention`}
+        items={failedOrQueuedJobs.map((j) => ({
+          id: j.id,
+          emoji: j.state === 'failed' ? '⚠' : '⏰',
+          title: j.title || j.id,
+          subtitle: `state: ${j.state}${j.nextRunAt ? ` · next ${new Date(j.nextRunAt).toLocaleString()}` : ''}`,
+          badge: j.state,
+          onPress: () => {
+            // Phase 65+ will implement a real "Run now" path. For
+            // now we just nudge the user back into the chat with a
+            // natural-language prompt that the agent can act on.
+            const prompt = `Run the job \`${j.id}\` (${j.title ?? 'untitled'}) now.`;
+            (window as any).hermes?.chat?.send?.(prompt).catch(() => undefined);
+          },
+        }))}
+        onClose={() => setOpenSheet(null)}
+        emptyText="No background jobs running. Your computer is idle. ✨"
+      />
+
+      <QuickActionSheet
+        visible={openSheet === 'tool'}
+        title="Run a tool"
+        subtitle={toolsets.length === 0
+          ? 'Hermes hasn\'t reported any tools yet. Make sure the gateway is online.'
+          : `${toolsets.length} tools available`}
+        items={toolsets.map((t) => ({
+          id: t.id,
+          emoji: '🔧',
+          title: t.name,
+          subtitle: t.description,
+          onPress: () => {
+            const prompt = `Run toolset \`${t.name}\` with empty args. Briefly say what it does first.`;
+            (window as any).hermes?.chat?.send?.(prompt).catch(() => undefined);
+          },
+        }))}
+        onClose={() => setOpenSheet(null)}
+        emptyText="No tools available right now. ✦"
+      />
+
+      <QuickActionSheet
+        visible={openSheet === 'activity'}
+        title="Recent activity"
+        subtitle={recentSessions.length === 0
+          ? 'Nothing in the last hour.'
+          : `${recentSessions.length} sessions touched your computer in the last hour`}
+        items={recentSessions.map((s) => ({
+          id: s.id,
+          emoji: '📂',
+          title: s.title || s.id.slice(0, 12),
+          subtitle: `${s.messageCount ?? '?'} msg · ${s.updatedAt ? new Date(s.updatedAt).toLocaleString() : 'just now'}`,
+          onPress: () => {
+            // If we already have a local copy of this conversation,
+            // activate it. Otherwise create a new one with the
+            // matching id so future sync merges correctly.
+            if (conversations[s.id]) {
+              setActiveConversation(s.id);
+            } else {
+              createConversation(s.title);
+            }
+          },
+        }))}
+        onClose={() => setOpenSheet(null)}
+        emptyText="No activity in the last hour. ✦"
       />
     </>
   );

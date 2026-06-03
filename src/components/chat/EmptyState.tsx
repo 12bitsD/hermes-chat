@@ -18,11 +18,18 @@ import { isNarrow } from '../../utils/platform';
 import { haptic } from '../../utils/haptic';
 import { useAppStore } from '../../store/app';
 
-export interface QuickAction {
-  id: 'voice' | 'photo' | 'new-session' | 'open-existing';
+export type QuickActionId =
+  | 'jobs' | 'tool' | 'activity' | 'last-turns'
+  | 'voice' | 'photo';
+
+export interface QuickActionMeta {
+  id: QuickActionId;
   label: string;
   hint: string;
   emoji: string;
+  position: 'primary' | 'secondary';
+  /** Optional dynamic badge text e.g. "3" or "12". Rendered top-right. */
+  badge?: string;
 }
 
 export interface EmptyStateProps {
@@ -31,19 +38,27 @@ export interface EmptyStateProps {
   /** Latest in-flight activity label, e.g. "running: fetch_url". */
   statusDetail?: string;
   /** Tapped a quick action card. */
-  onAction: (id: QuickAction['id']) => void;
+  onAction: (id: QuickActionId) => void;
+  /** Optional dynamic badge text for each primary action. */
+  badges?: Partial<Record<QuickActionId, string>>;
 }
 
-const ACTIONS: QuickAction[] = [
-  { id: 'voice',         label: 'Voice',      hint: 'Hold to talk to Hermes',        emoji: '🎙' },
-  { id: 'photo',         label: 'Photo',      hint: 'Send an image with your ask',   emoji: '📷' },
-  { id: 'new-session',   label: 'New chat',   hint: 'Start a fresh conversation',     emoji: '✨' },
-  { id: 'open-existing', label: 'Recent',     hint: 'Pick up where you left off',     emoji: '🕒' },
+const PRIMARY_ACTIONS: QuickActionMeta[] = [
+  { id: 'jobs',       position: 'primary',   label: 'Jobs',     hint: 'Background work on your computer',  emoji: '📥' },
+  { id: 'tool',       position: 'primary',   label: 'Tool',     hint: 'Run a Hermes tool directly',        emoji: '🛠' },
+  { id: 'activity',   position: 'primary',   label: 'Activity', hint: 'What ran on Hermes in the last hr', emoji: '🔔' },
+  { id: 'last-turns', position: 'primary',   label: 'Last 5',   hint: 'Jump back into your last 5 turns',  emoji: '📋' },
 ];
 
-export const EmptyState: React.FC<EmptyStateProps> = ({ status, statusDetail, onAction }) => {
+const SECONDARY_ACTIONS: QuickActionMeta[] = [
+  { id: 'voice', position: 'secondary', label: 'Voice', hint: 'Hold to talk',         emoji: '🎙' },
+  { id: 'photo', position: 'secondary', label: 'Photo', hint: 'Send an image with it', emoji: '📷' },
+];
+
+export const EmptyState: React.FC<EmptyStateProps> = ({ status, statusDetail, onAction, badges }) => {
   const accent = useTheme();
   const narrow = isNarrow;
+  const primary = PRIMARY_ACTIONS.map((a) => (badges?.[a.id] ? { ...a, badge: badges[a.id] } : a));
   return (
     <ScrollViewEquivalent
       style={styles.root}
@@ -63,9 +78,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ status, statusDetail, on
         <Text style={styles.heroTitle}>🌸 Hermes</Text>
         <Text style={styles.heroSubtitle}>Drive your agent from your pocket.</Text>
         <Text style={styles.heroHint}>
-          {narrow
-            ? 'Hold the mic to talk, or pick an action below.'
-            : 'Hold the mic to talk, or pick an action below.'}
+          Pull background work, jump into a tool, or just keep typing.
         </Text>
       </View>
 
@@ -77,9 +90,12 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ status, statusDetail, on
           that the drawer has remote items to import. */}
       <HermesHasSessionsHint />
 
-      {/* Quick action grid */}
+      {/* Quick action grid — 4 primary cards in a 2x2 (mobile) /
+          4x1 (wide) layout. Each card has an optional dynamic badge
+          sourced from the live Hermes snapshot (jobs count, tool count,
+          recent-activity count, last-turns count). */}
       <View style={styles.actionGrid}>
-        {ACTIONS.map((a) => (
+        {primary.map((a) => (
           <Pressable
             key={a.id}
             onPress={() => { haptic('light'); onAction(a.id); }}
@@ -88,11 +104,35 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ status, statusDetail, on
               pressed ? styles.actionPressed : null,
             ]}
           >
+            {a.badge ? (
+              <View style={styles.actionBadge}>
+                <Text style={styles.actionBadgeText}>{a.badge}</Text>
+              </View>
+            ) : null}
             <View style={[styles.actionIcon, { backgroundColor: accent.accent.soft }]}>
               <Text style={styles.actionEmoji}>{a.emoji}</Text>
             </View>
             <Text style={styles.actionLabel}>{a.label}</Text>
             <Text style={styles.actionHint} numberOfLines={2}>{a.hint}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* Secondary row: Voice / Photo. Smaller chips, same kawaii
+          density. Mirrors the composer 📎🎙 buttons so first-time
+          users discover the attach affordance from the empty state. */}
+      <View style={styles.secondaryRow}>
+        {SECONDARY_ACTIONS.map((a) => (
+          <Pressable
+            key={a.id}
+            onPress={() => { haptic('light'); onAction(a.id); }}
+            style={({ pressed }) => [
+              styles.secondaryChip,
+              pressed ? styles.actionPressed : null,
+            ]}
+          >
+            <Text style={styles.secondaryEmoji}>{a.emoji}</Text>
+            <Text style={styles.secondaryLabel}>{a.label}</Text>
           </Pressable>
         ))}
       </View>
@@ -320,10 +360,26 @@ const styles = StyleSheet.create({
     width: '48%', padding: space.sm,
     backgroundColor: neutral.surface, borderWidth: 1, borderColor: neutral.border,
     borderRadius: radius.md, alignItems: 'flex-start',
+    position: 'relative',
   },
   actionPressed: { backgroundColor: neutral.surfaceMuted },
   actionIcon: { width: 36, height: 36, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   actionEmoji: { fontSize: 18 },
   actionLabel: { ...type.body, color: neutral.ink, fontSize: 13 },
   actionHint: { ...type.captionSm, color: neutral.inkMuted, marginTop: 2 },
+  actionBadge: {
+    position: 'absolute', top: 6, right: 6,
+    backgroundColor: '#FFB6C1', borderRadius: 10,
+    paddingHorizontal: 6, paddingVertical: 1, minWidth: 20, alignItems: 'center',
+  },
+  actionBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  secondaryRow: { flexDirection: 'row', gap: space.xs, marginTop: space.sm },
+  secondaryChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: neutral.surface, borderWidth: 1, borderColor: neutral.border,
+    borderRadius: 999,
+  },
+  secondaryEmoji: { fontSize: 16 },
+  secondaryLabel: { ...type.caption, color: neutral.ink, fontSize: 12 },
 });
