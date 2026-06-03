@@ -242,6 +242,414 @@ fires `stopRun` so the agent doesn't keep running.
 
 ---
 
+## Phase 14 — Bottom status bar with live provider state
+
+The first time the app talks to a real LLM, the user has no
+feedback loop. Was the request received? Is the API key wrong?
+Is the gateway even up? Phase 14 adds a thin bar at the bottom
+of the screen that always answers these questions, with a small
+status dot (green/yellow/red) + a 1-line label. The visual
+language: 12px caption, neutral background, accent border on
+top — the bar is meant to be glanceable, not inspected.
+
+This is the same status card pattern we still use in EmptyState
+(Phase 53 / 60) and the system prompt (Phase 41). It's our
+"trust surface" — wherever the user might wonder "is this
+thing working", the status bar answers.
+
+---
+
+## Phase 15 — Quick value cuts
+
+A round of subtraction: removed unused drawer pages, collapsed
+nested menus, deleted experimental screens. The result is a
+single-path UI: composer at the bottom, drawer for navigation,
+settings as a sheet. Anywhere the user could "drill in 3 levels
+to do one thing", they now do it in 1.
+
+The principle (later made explicit in the 5-axis decomp):
+**fewer screens, more actions per screen**. The empty state
+should teach the product, not the navigation.
+
+---
+
+## Phase 16 — Auto-detect local LLM at first launch
+
+When the user opens the app for the first time, we don't
+require them to configure an endpoint. We probe a small set
+of known local LLM addresses (localhost:11434 for Ollama,
+localhost:1234 for LM Studio, etc.) and, if any responds,
+silently set that as the default provider. The user can
+override in Settings, but the override is sticky from then
+on (auto-detect doesn't fight them).
+
+The system prompt (added in Phase 41) later extends this
+principle to runtime: Hermes picks the right tool without
+the user telling it which to use. The product is **agent-
+friendly** in the sense of "we do the obvious thing so the
+user doesn't have to".
+
+---
+
+## Phase 17 — SparkleRing around EmptyState hero
+
+Six ✦/✧ sparkles orbiting the EmptyState hero image, on a
+slow 18s loop. Pure atmosphere. A small thing, but the
+moment the user sees it, they know this is not a generic
+chat app — it's a tool with personality. The kawaii-density
+philosophy starts here.
+
+The SparkleRing component lives in EmptyState.tsx and is
+reused by the loading state (Phase 18+) and the long-idle
+idle screen (Phase 25+).
+
+---
+
+## Phase 18 — Read-aloud (TTS) + regenerate slot in long-press menu
+
+Long-pressing a message opens an iOS ActionSheet with 4
+options: Copy, Share, Speak, (Regenerate for assistant
+messages). Speak uses expo-speech on native and browser
+speechSynthesis on web. Regenerate re-runs the same
+request, useful when the first answer was off.
+
+This was later moved to an inline button (Phase 67) once
+real users asked for a faster path, but the iOS action
+sheet stays for the less-common options (Copy, Share,
+Regenerate, Sync from Hermes).
+
+---
+
+## Phase 19 — Mobile-first EmptyState as Hermes agent control panel
+
+The EmptyState stops being a "no messages yet" placeholder
+and becomes a **control surface** for the agent. Cards
+for the most common agent operations: start a new task,
+open the prompt navigator, attach a file, open settings.
+The user opens the app and immediately has 4 affordances
+to push the agent — not just an empty text box.
+
+This is the prototype for Phase 60 #1 / 61 #2 where the
+empty state becomes a real **CLI surface** (Jobs / Tool /
+Activity / Last 5 cards, plus the `window.hermes.*` bus).
+
+---
+
+## Phase 20 — Hermes capabilities live discovery in Settings
+
+The Settings panel used to list tools as a static dropdown.
+Phase 20 replaces it with a live read-out: when the Hermes
+gateway reports its current toolset (via /v1/capabilities
+or similar), the Settings panel updates in real-time. The
+user sees "your Hermes has 12 tools: shell, read_file,
+web_search, …" without the app shipping a hardcoded list.
+
+This is the first time a Hermes-server-side change
+silently improved the client. Later (Phase 22+) the same
+mechanism feeds the Hermes dashboard strip in the drawer
+(Phase 34) and the composer hint (Phase 33).
+
+---
+
+## Phase 21 — GPT-Image-2 icons replace emoji composer buttons
+
+The composer used to be 📎 🎙 ✨ emojis for attach / voice /
+new. Phase 21 swaps them for hand-illustrated icons
+generated via GPT-Image-2, in a consistent kawaii style.
+The icons read as "this app is polished" at a glance — and
+they scale to retina without the up-scaling artifacts that
+emoji have at 3x.
+
+This is also the moment the "kawaii concentration" became
+a load-bearing design value rather than a happy accident.
+
+---
+
+## Phase 22 — HermesSessionsClient (list / get / create / fork)
+
+A dedicated client for the Hermes session API: list all
+sessions on the user's computer, get one with full message
+history, create a new one, fork an existing session. The
+client is read-only by default; mutations (create, fork)
+require user approval (later enforced by ApprovalModal,
+then by the risk grader in Phase 63).
+
+The session model is the foundation of all the "pull from
+your computer" UX in Phases 26-35.
+
+---
+
+## Phase 23 — 📱 mobile identifier in app bar + status bar
+
+The app bar shows the current session id (last 6 chars) and
+a small phone emoji. The status bar mirrors it. The user
+can always tell which Hermes session on their computer
+this phone is talking to. Long-press the app bar chip to
+copy the full id (Phase 30 adds this).
+
+This is the "phone-remote-to-desktop" surface becoming
+literal: the user sees the session id on both ends.
+
+---
+
+## Phase 25 — Subtraction + Hermes-native deepening
+
+A pause-to-subtract phase. Removed experimental features
+that didn't pull weight (the prompt marketplace, the persona
+picker, the theme builder). In their place, deepened
+Hermes-native affordances: live snapshot in the status bar
+(Phase 26), remote sessions in the drawer (Phase 27),
+remote session import (Phase 28).
+
+The lesson: it's easier to add 5 things than to remove
+3. This phase is the cut that made the product feel like
+it knew what it was.
+
+---
+
+## Phase 26 — Live Hermes snapshot in status bar
+
+The status bar started showing live readouts from the
+Hermes gateway: "12 sessions on your computer, last
+activity 3 min ago". Polled every 30s. The user can see
+the gateway working without opening any panel.
+
+This snapshot is the data source for everything that
+follows: Phase 27 (drawer), Phase 28 (import), Phase 29
+(Settings card), Phase 33 (composer hint), Phase 34
+(dashboard strip), Phase 35 (discoverability hint), and
+the EmptyState quick actions in Phase 61 #2.
+
+---
+
+## Phase 27 — Mobile drawer shows remote Hermes sessions
+
+The drawer used to only show local conversations. Phase 27
+adds a "From your computer" section above the local list,
+with the user's remote Hermes sessions. Tapping one
+imports it (Phase 28). The user can scroll through their
+whole history without leaving the phone.
+
+---
+
+## Phase 28 — Import remote Hermes session into the local list
+
+Tapping a remote session in the drawer imports it: the
+session is added to the local conversation list, its
+messages are pulled (Phase 22 sessions client), and the
+user can scroll back through the history. The imported
+session is now usable as a normal local conversation
+(you can send a follow-up; the message gets routed back
+to the remote Hermes).
+
+---
+
+## Phase 29 — Hermes snapshot card in Settings (live read-out)
+
+Settings used to be a flat list. Phase 29 adds a card at
+the top: a live readout of the Hermes gateway's current
+state — uptime, session count, toolset size, last
+activity. The user can verify the gateway is alive and
+what it's doing without leaving Settings.
+
+---
+
+## Phase 30 — App bar shows session id, long-press to copy
+
+The session-id chip in the app bar (added in Phase 23)
+becomes tappable: long-press copies the full id to
+clipboard. Useful when the user wants to ssh into their
+computer and find the same session in the desktop UI.
+
+---
+
+## Phase 31 — Live job controls — pause / resume / run from phone
+
+A new sheet under the "Jobs" card in the drawer: pause,
+resume, and "run now" buttons for any Hermes job. The
+user can control their scheduled jobs from the phone —
+e.g. "pause the morning digest while I'm on vacation,
+resume Monday" — without opening the desktop client.
+
+---
+
+## Phase 32 — GPT-Image-2 remote-control hero illustration
+
+The EmptyState hero illustration used to be a generic
+"remote" metaphor. Phase 32 replaces it with a custom
+GPT-Image-2 illustration of a girl at a desk with a phone
+in her hand, looking up at the screen. The visual
+narrative: phone-remote-to-desktop. Sets the tone for
+the entire product.
+
+---
+
+## Phase 33 — Composer shows live routing hint
+
+The composer hint ("Type a message...") gains a trailing
+routing indicator: which provider the message will go to
+("→ Hermes" or "→ Mock LLM"). The user knows where the
+message is going before hitting send. Tapping the hint
+opens a Settings sheet.
+
+---
+
+## Phase 34 — Hermes dashboard strip in the drawer
+
+A horizontal scroll strip in the drawer showing the most
+recent remote sessions as cards. Replaces the previous
+vertical list. The user can scan 5-6 sessions at a glance.
+
+---
+
+## Phase 35 — Discoverability hint — "N conversations on your computer"
+
+When the gateway has 1+ sessions, the EmptyState gains a
+small hint: "50 conversations on your computer. Tap ☰ to
+import one." New users learn the drawer has remote items
+without having to explore.
+
+---
+
+## Phase 36 — Phone messages mirror into Hermes SessionDB
+
+A new live event: when the user sends a message from
+hermes-chat, the phone-side conversation mirror-syncs
+into the remote Hermes SessionDB. The user can close
+the phone, open the desktop client, and continue the
+conversation from there. The phone is now a true
+first-class Hermes client, not a parallel client.
+
+---
+
+## Phase 37 — Pull-to-merge from Hermes — 🔄 in the app bar
+
+The app bar gets a 🔄 button that pulls the latest
+remote state into the local conversation. Useful when
+the user has been editing on the desktop and wants the
+phone to catch up. Pull-to-merge is non-destructive:
+local edits take precedence; only messages missing
+locally are pulled.
+
+---
+
+## Phase 38 — First-connect wow-moment + edge-swipe to open drawer
+
+The first time the app connects to the user's Hermes
+gateway, a brief "✨" overlay plays. Not too long (1.2s)
+and not in the way (corner, not center). After that, the
+user gets edge-swipe (from the left edge of the screen)
+to open the drawer. Standard mobile pattern; works in
+both iOS Safari and Android Chrome.
+
+---
+
+## Phase 39 — ThinkingMascot — kawaii avatar bobs while Hermes thinks
+
+While the assistant is mid-stream, a small animated
+mascot avatar (the same white-haired girl from the hero)
+replaces the static assistant avatar in the message
+list. The mascot bobs up and down on a 1.4s loop. Tells
+the user "Hermes is working" without any text.
+
+This is later replaced by the state-aware MascotAvatar
+(Phase 69) that switches between 5 mascots (idle /
+thinking / running / celebrate / confused) based on the
+message state.
+
+---
+
+## Phase 40 — Long-press assistant message → '📡 Sync from Hermes'
+
+iOS ActionSheet for assistant messages gets a new
+option: "📡 Sync from Hermes". If the local conversation
+has drifted from the remote (e.g. the user edited on
+desktop and forgot to pull), this option re-fetches the
+remote state and reconciles.
+
+---
+
+## Phase 41 — Hermes has a real system prompt
+
+Before Phase 41, the assistant's "personality" was just
+default model behavior. Phase 41 introduces an explicit
+system prompt that's injected into every request: a
+short, kawaii-flavored description of what Hermes is
+(an agent that runs on the user's computer, that
+phone-remote-to-desktop, that the user can audit).
+This is the moment the assistant's voice became
+consistent.
+
+---
+
+## Phase 42 — QuickReplies — one-tap follow-up chips under assistant reply
+
+After every assistant message, 2-3 contextual chips
+appear: "More detail", "Explain code", "Summarize".
+Tapping one sends a pre-canned follow-up. Quicker than
+typing for common actions. (Phase 68 removes the
+generic "Continue" chip; the 3 context chips are
+heuristic-driven and stay.)
+
+---
+
+## Phase 43 — RunHeader — agent-native run state above the message list
+
+While the agent is running, a header above the message
+list shows: "⚡ Hermes is running", a live timer
+(0:42 → 0:43 → ...), and a Stop button. The user can
+abort the run without scrolling to find a button. Lives
+in ChatView as a sticky component.
+
+---
+
+## Phase 44 — Visual polish pass — image blending, focus glow, button spring
+
+A wide-pass polish: image corners round correctly on
+transparent backgrounds, focus rings appear on
+keyboard / D-pad focus (a11y), buttons get a small
+spring on press. No new features, just tightening.
+
+---
+
+## Phase 45 — Bubble depth — user gets pink drop shadow, assistant subtle gray
+
+Visual hierarchy: user bubbles float (pink shadow),
+assistant bubbles recede (subtle gray shadow). The
+shadow language tells the user "this is you" vs
+"this is the agent" without text.
+
+---
+
+## Phase 46 — Realign icons to their jobs
+
+A small but useful cleanup: every tool button emoji
+matches its actual job. 📎 for attach (was 🎙 in some
+places), 🎙 for voice (was 📎), 📷 for camera (was
+🖼). The mental model is now consistent.
+
+---
+
+## Phase 47 — Drawer New chat button = round 28px + accent, avatar sticker
+
+Drawer header redesign: a round 28px "+" button (accent
+color) for new chat, avatar sticker for the user
+identifying the active session. Small, but the drawer
+header now reads as a designed surface.
+
+---
+
+## Phase 48 — Typography scale cleanup — 8 tiers, no more ad-hoc fontSize
+
+Before Phase 48, fontSize values were scattered
+throughout the codebase (13, 14, 15, 16, 17, 18...).
+Phase 48 introduces a strict 8-tier scale (caption / body /
+title / hero / etc.) and replaces every ad-hoc value. The
+result: consistent rhythm across all surfaces, easier to
+add new screens, fewer bugs from off-by-one sizes.
+
+---
+
 ## Phase 49 → 53 — Quick recap
 
 - 49+50: `ToolBtn` and `QuickReplyChip` got a spring press + lift
