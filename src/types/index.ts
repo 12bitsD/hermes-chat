@@ -1,6 +1,6 @@
 export type Role = 'user' | 'assistant' | 'system';
 
-export type MessageStatus = 'streaming' | 'done' | 'error' | 'awaiting-approval';
+export type MessageStatus = 'streaming' | 'done' | 'error' | 'awaiting-approval' | 'queued' | 'failed-queued';
 
 export interface ToolEvent {
   /** Unique id so React can key events in the same message. */

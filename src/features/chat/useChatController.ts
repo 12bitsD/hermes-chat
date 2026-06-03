@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Keyboard, Platform } from 'react-native';
 import { STICK_TO_BOTTOM_MS } from '../../config/app-constants';
-import { subscribeChatSend } from '../../lib/chatSendBus';
+import { dispatchChatSend, subscribeChatSend } from '../../lib/chatSendBus';
 import { publishCli } from '../../lib/hermesCliBus';
+import { enqueue, list as listQueued, dequeue, bumpRetry, nextBackoffMs } from '../../services/queue/messageQueue';
 import { buildChatHistory } from '../../domain/chat/history';
 import { makeAssistantMessage, makeUserMessage } from '../../domain/chat/messages';
 import { pickFile, type PickedFile } from '../attachments/filePicker';
@@ -352,6 +353,43 @@ export function useChatController() {
           },
         },
       );
+    } catch (err: any) {
+      // Network failure (TypeError) → enqueue the user message so
+      // we can retry it the next time the browser reports `online`.
+      // Anything else (server 4xx/5xx, JSON parse, etc.) stays in
+      // the existing `run:failed` path so the user sees the error
+      // immediately and can fix it.
+      const isNetwork = err instanceof TypeError || /network|fetch/i.test(String(err?.message ?? err));
+      if (isNetwork) {
+        const userMsg = makeUserMessage(text);
+        if (files.length > 0) {
+          userMsg.attachments = files.map((file) => ({
+            id: file.uri,
+            name: file.name,
+            kind: file.kind,
+            size: file.size,
+            uri: file.uri,
+            previewUri: file.kind === 'image' ? file.uri : undefined,
+          }));
+          userMsg.status = 'queued';
+        }
+        // mark assistant bubble as queued (will be filled on retry)
+        updateMessage(conversationId, assistantMsg.id, {
+          content: '⏳ Queued — waiting for connection…',
+          status: 'queued',
+        });
+        enqueue({
+          id: userMsg.id,
+          conversationId,
+          text,
+          files: files.map((f) => ({ ...f })),
+        }).catch(() => undefined);
+        setStreamError('Offline — message will resend automatically when you reconnect.');
+        haptic('warning');
+      } else {
+        setStreamError(err?.message ?? 'Send failed');
+        haptic('error');
+      }
     } finally {
       setStreaming(false);
       abortRef.current = null;
@@ -377,6 +415,80 @@ export function useChatController() {
   // closure so it picks up the freshly created user message, abort
   // controller, etc. on every send.
   useEffect(() => { sendRef.current = send; }, [send]);
+
+  // Flush the offline queue. Tries each entry in FIFO order with
+  // exponential backoff; drops entries that hit MAX_RETRIES.
+  const flushQueueRef = useRef<(() => Promise<void>) | null>(null);
+  flushQueueRef.current = async () => {
+    if (streaming) return;
+    const items = await listQueued();
+    if (items.length === 0) return;
+    for (const entry of items) {
+      const backoff = nextBackoffMs(entry);
+      if (backoff === null) {
+        // exhausted retries — mark as failed-queued in the bubble
+        const conv = useAppStore.getState().conversations[entry.conversationId];
+        if (conv) {
+          const last = conv.messages[conv.messages.length - 1];
+          if (last?.status === 'queued') {
+            useAppStore.getState().updateMessage(entry.conversationId, last.id, {
+              content: '❌ Couldn\'t reconnect after 3 tries. Tap to retry.',
+              status: 'failed-queued',
+            });
+          }
+        }
+        await dequeue(entry.id);
+        continue;
+      }
+      // Replay the message by dispatching it through the same bus
+      // that the composer uses. The bus subscriber will reuse the
+      // `send` callback, which will now hit the network and either
+      // succeed (dequeue) or re-enqueue (handled in send's catch).
+      if (entry.conversationId !== useAppStore.getState().activeConversationId) {
+        useAppStore.getState().setActiveConversation(entry.conversationId);
+        // give React a tick to mount the new conversation before sending
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      const ok = await dispatchChatSend({ text: entry.text, opts: { files: entry.files } });
+      if (ok.ok) {
+        await dequeue(entry.id);
+        // mark the bubble as streaming so the user sees activity
+        const conv = useAppStore.getState().conversations[entry.conversationId];
+        if (conv) {
+          const last = conv.messages[conv.messages.length - 1];
+          if (last?.status === 'queued' || last?.status === 'failed-queued') {
+            useAppStore.getState().updateMessage(entry.conversationId, last.id, {
+              content: '',
+              status: 'streaming',
+            });
+          }
+        }
+      } else {
+        await bumpRetry(entry.id);
+      }
+    }
+  };
+
+  // Flush on app start (if anything is queued) and on browser
+  // 'online' events. The hook reads navigator.onLine so a
+  // cold-start with the network already up triggers an immediate
+  // flush. On native the effect is a no-op.
+  useEffect(() => {
+    let mounted = true;
+    const tryFlush = () => {
+      if (!mounted) return;
+      void flushQueueRef.current?.();
+    };
+    if (typeof window !== 'undefined') {
+      if (navigator.onLine) tryFlush();
+      window.addEventListener('online', tryFlush);
+      return () => {
+        mounted = false;
+        window.removeEventListener('online', tryFlush);
+      };
+    }
+    return () => { mounted = false; };
+  }, []);
 
   const handleEditUserMessage = useCallback(async (messageId: string, newText: string) => {
     if (!conversationId || streaming) return;

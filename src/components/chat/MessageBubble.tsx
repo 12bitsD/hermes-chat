@@ -158,6 +158,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message
               <Text style={[styles.heartbeat, isUser ? styles.heartbeatUser : [styles.heartbeatAssistant, { color: neutral.inkMuted }]]}>✓</Text>
             ) : null}
             {message.status === 'error' ? <Text style={styles.errMark}>⚠ error</Text> : null}
+            {message.status === 'queued' ? <Text style={styles.errMark}>⏳ queued</Text> : null}
+            {message.status === 'failed-queued' ? <Text style={styles.errMark}>❌ could not resend — tap to retry</Text> : null}
             {!isUser && message.status === 'done' && isLast && onSend ? (
               <QuickReplies
                 onPick={(text) => { haptic('light'); onSend(text); }}
