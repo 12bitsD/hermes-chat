@@ -5,6 +5,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { neutral, type, space, radius, useTheme } from '../theme';
+import type { Reachability } from '../services/llm/types';
+import { DOWN } from '../services/llm/types';
 import { ChatView } from '../components/chat/ChatView';
 import { PromptNavigator } from '../components/prompt-nav/PromptNavigator';
 import { SettingsPanel } from '../components/SettingsPanel';
@@ -89,7 +91,7 @@ export const MainScreen: React.FC = () => {
         const ok = await getLLMClient().isReachable();
         if (!cancelled) setProviderOk(ok);
       } catch {
-        if (!cancelled) setProviderOk(false);
+        if (!cancelled) setProviderOk(DOWN);
       }
       if (!cancelled) timer = setTimeout(tick, 30_000);
     };
@@ -316,11 +318,13 @@ export const MainScreen: React.FC = () => {
           <Text style={styles.statusText}>
             {settings.llmProvider === 'hermes-gateway' ? '🌐 Hermes' : (settings.llmProvider as string)}
           </Text>
-          {providerOk === false ? (
-            <Text style={[styles.statusText, { color: neutral.err, marginLeft: 4 }]}>· offline</Text>
-          ) : providerOk === true ? (
+          {providerOk === null ? null : providerOk.ok ? (
             <Text style={[styles.statusText, { color: neutral.ok, marginLeft: 4 }]}>· online</Text>
-          ) : null}
+          ) : (
+            <Text style={[styles.statusText, { color: providerOk.status === 'no-auth' ? neutral.warn : neutral.err, marginLeft: 4 }]}>
+              · {providerOk.status === 'no-auth' ? 'auth needed' : providerOk.status === 'timeout' ? 'slow' : 'offline'}
+            </Text>
+          )}
           {(settings as any).useRunsMode ? (
             <Text style={[styles.statusText, { marginLeft: 8, color: accent.accent.fg }]}>⚡ runs-mode</Text>
           ) : null}
@@ -422,16 +426,20 @@ const DesktopLayout: React.FC<{ onOpenSettings: () => void; onOpenDrawer: () => 
   );
 };
 
-function statusDotColor(provider: 'hermes-gateway' | 'mock' | 'openai-compatible' | 'ollama', ok: boolean | null) {
+function statusDotColor(provider: 'hermes-gateway' | 'mock' | 'openai-compatible' | 'ollama', r: Reachability | null) {
   if (provider === 'mock') return { backgroundColor: neutral.inkMuted };
-  if (ok === null) return { backgroundColor: neutral.inkMuted };
-  return ok ? { backgroundColor: neutral.ok } : { backgroundColor: neutral.err };
+  if (r === null) return { backgroundColor: neutral.inkMuted };
+  if (r.ok) return { backgroundColor: neutral.ok };
+  if (r.status === 'no-auth') return { backgroundColor: neutral.warn };
+  return { backgroundColor: neutral.err };
 }
 
-function statusDotColorFor(provider: string, ok: boolean | null) {
+function statusDotColorFor(provider: string, r: Reachability | null) {
   if (provider === 'mock') return neutral.inkMuted;
-  if (ok === null) return neutral.inkMuted;
-  return ok ? neutral.ok : neutral.err;
+  if (r === null) return neutral.inkMuted;
+  if (r.ok) return neutral.ok;
+  if (r.status === 'no-auth') return neutral.warn;
+  return neutral.err;
 }
 
 // ─── Mobile drawer (sessions) ────────────────────────────────────────────────

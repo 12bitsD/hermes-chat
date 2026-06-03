@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Conversation, Message, AppSettings, DEFAULT_SETTINGS, PromptTemplate } from '../types';
+import type { Reachability } from '../services/llm/types';
 
 interface AppState {
   conversations: Record<string, Conversation>;
@@ -33,9 +34,9 @@ interface AppState {
 
   updateSettings: (patch: Partial<AppSettings>) => void;
   /** Live reachability of the configured LLM endpoint. null = probing. */
-  gatewayReachable: boolean | null;
+  gatewayReachable: Reachability | null;
   /** Optional override used by the background probe. */
-  setGatewayReachable: (ok: boolean | null) => void;
+  setGatewayReachable: (r: Reachability | null) => void;
   /** Live snapshot of the Hermes backend — sessions, skills, toolsets, jobs. null = unknown. */
   hermesSnapshot: HermesSnapshot | null;
   setHermesSnapshot: (snap: HermesSnapshot | null) => void;
@@ -297,8 +298,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
 
-  gatewayReachable: null as boolean | null,
-  setGatewayReachable: (ok: boolean | null) => set({ gatewayReachable: ok }),
+  gatewayReachable: null as Reachability | null,
+  setGatewayReachable: (r: Reachability | null) => set({ gatewayReachable: r }),
 
   hermesSnapshot: null as HermesSnapshot | null,
   setHermesSnapshot: (snap: HermesSnapshot | null) => set({ hermesSnapshot: snap }),

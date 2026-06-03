@@ -106,11 +106,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
     setProbing(true);
     setProbeResult(null);
     try {
-      const ok = await getLLMClient().isReachable();
-      setProbeResult({ ok, msg: ok ? '✓ Reachable' : '✕ No answer' });
-      haptic(ok ? 'success' : 'error');
+      const r = await getLLMClient().isReachable();
+      setProbeResult({ ok: r.ok, msg: r.message });
+      haptic(r.ok ? 'success' : 'error');
     } catch (e: any) {
-      setProbeResult({ ok: false, msg: e?.message ?? 'Network error' });
+      setProbeResult({ ok: false, msg: `Probe failed: ${e?.message ?? e}` });
       haptic('error');
     } finally {
       setProbing(false);
@@ -271,8 +271,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
               <Text style={styles.label}>Endpoint</Text>
               <TextField value={endpoint} onChangeText={setEndpoint} placeholder="http://127.0.0.1:8642/v1/chat/completions" />
 
-              <Text style={styles.label}>API key (Hermes API_SERVER_KEY env, optional)</Text>
-              <TextField value={apiKey} onChangeText={setApiKey} placeholder="leave empty if gateway has no auth" secureTextEntry />
+              <Text style={styles.label}>API key (required — paste from <Text style={{ fontFamily: 'Courier' }}>hermes config show</Text>)</Text>
+              <TextField value={apiKey} onChangeText={setApiKey} placeholder="Hermes API_SERVER_KEY (required)" secureTextEntry />
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
                 <Button label="Probe" onPress={probe} disabled={probing} small default />

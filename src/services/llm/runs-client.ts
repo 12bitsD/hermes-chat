@@ -26,8 +26,8 @@
  */
 
 import type { LLMConfig } from './config';
-import type { LLMStreamHandlers } from './types';
-
+import type { LLMStreamHandlers, Reachability } from './types';
+import { REACHABLE, NO_AUTH, DOWN, TIMEOUT, NO_CONFIG } from './types';
 export type RunEvent =
   | { event: 'message.delta'; run_id: string; timestamp: number; delta: string }
   | { event: 'tool.started'; run_id: string; timestamp: number; tool: string; preview?: string }
@@ -55,17 +55,25 @@ export interface RunRequest {
 export class HermesRunsClient {
   constructor(private config: LLMConfig) {}
 
-  isReachable(): Promise<boolean> {
-    // /v1/runs is POST only. Use /v1/models as a reachability probe.
-    if (!this.config.endpoint) return Promise.resolve(false);
+  isReachable(): Promise<Reachability> {
+    // /v1/runs is POST only. Use /v1/health (0-cost handler) as a probe.
+    if (!this.config.endpoint) return Promise.resolve(NO_CONFIG);
     const base = this.config.endpoint.replace(/\/chat\/completions\/?$/, '');
-    return fetch(`${base}/models`, {
+    return fetch(`${base}/health`, {
       method: 'GET',
       headers: this.headers({}),
       signal: AbortSignal.timeout(2500),
     } as RequestInit)
-      .then((r) => r.ok || r.status < 500)
-      .catch(() => false);
+      .then((r) => {
+        if (r.ok) return REACHABLE;
+        if (r.status === 401 || r.status === 403) return NO_AUTH;
+        if (r.status >= 500) return DOWN;
+        return REACHABLE; // 404 = /v1/models not supported, but server is up
+      })
+      .catch((e: any) => {
+        if (e?.name === 'TimeoutError' || e?.name === 'AbortError') return TIMEOUT;
+        return DOWN;
+      });
   }
 
   /**
@@ -222,9 +230,6 @@ export class HermesRunsClient {
   }
 }
 
-/** Type guard for the streaming handlers used by the regular chat path —
- *  HermesRunsClient speaks a richer event vocabulary that the regular
- *  client doesn't, so we don't re-use the LLMStreamHandlers shape. */
 export type RunStreamCallbacks = {
   onDelta: (delta: string) => void;
   onToolStart: (tool: string, preview?: string) => void;
@@ -235,16 +240,3 @@ export type RunStreamCallbacks = {
   onFailed: (message: string) => void;
   onStopped: (reason: string) => void;
 };
-
-export function callbacksFromStreamHandlers(h: LLMStreamHandlers): RunStreamCallbacks {
-  return {
-    onDelta: h.onChunk,
-    onToolStart: () => undefined,
-    onToolEnd: () => undefined,
-    onReasoning: () => undefined,
-    onApproval: () => undefined,
-    onCompleted: () => h.onDone(''),
-    onFailed: (msg) => h.onError(new Error(msg)),
-    onStopped: () => undefined,
-  };
-}

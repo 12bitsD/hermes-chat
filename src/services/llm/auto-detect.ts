@@ -17,14 +17,17 @@
 
 import { defaultEndpoint, DEFAULT_GATEWAY_PORT } from './config';
 
+export type ReachabilityStatus = 'ok' | 'no-auth' | 'down' | 'timeout' | 'config-missing';
+
 export interface AutoDetectResult {
   found: boolean;
   reason?: string;
+  status?: ReachabilityStatus;
 }
 
 const CANDIDATES = [
-  { host: '127.0.0.1', port: DEFAULT_GATEWAY_PORT, path: '/v1/models' },
-  { host: '10.0.2.2',   port: DEFAULT_GATEWAY_PORT, path: '/v1/models' }, // Android emulator
+  { host: '127.0.0.1', port: DEFAULT_GATEWAY_PORT, path: '/v1/health' },
+  { host: '10.0.2.2',   port: DEFAULT_GATEWAY_PORT, path: '/v1/health' }, // Android emulator
 ];
 
 const PROBE_TIMEOUT_MS = 1500;
@@ -38,20 +41,24 @@ export async function autoDetectLLM(): Promise<AutoDetectResult> {
           method: 'GET',
           signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         } as RequestInit);
-        return { ok: res.ok || res.status < 500, host: c.host, port: c.port };
-      } catch {
-        return { ok: false, host: c.host, port: c.port };
+        if (res.ok) return { ok: true, host: c.host, port: c.port, status: 'ok' as const };
+        if (res.status === 401 || res.status === 403) return { ok: false, host: c.host, port: c.port, status: 'no-auth' as const };
+        if (res.status >= 500) return { ok: false, host: c.host, port: c.port, status: 'down' as const };
+        return { ok: true, host: c.host, port: c.port, status: 'ok' as const };
+      } catch (e: any) {
+        if (e?.name === 'TimeoutError' || e?.name === 'AbortError') return { ok: false, host: c.host, port: c.port, status: 'timeout' as const };
+        return { ok: false, host: c.host, port: c.port, status: 'down' as const };
       }
     }),
   );
 
-  for (const r of checks) {
-    if (r.ok) {
-      return { found: true };
-    }
-  }
+  // Prefer 'ok' over 'no-auth' — if we get a 200 somewhere, that's the one to use.
+  const ok = checks.find((r) => r.status === 'ok');
+  if (ok) return { found: true, status: 'ok' };
+  const noAuth = checks.find((r) => r.status === 'no-auth');
+  if (noAuth) return { found: false, status: 'no-auth', reason: 'Hermes gateway is running but rejected the request — paste API_SERVER_KEY in Settings.' };
 
-  return { found: false, reason: 'Hermes gateway is not responding on port 8642.' };
+  return { found: false, status: 'down', reason: 'Hermes gateway is not responding on port 8642.' };
 }
 
 export { defaultEndpoint };

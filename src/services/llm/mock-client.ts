@@ -6,7 +6,8 @@
  * exercise its streaming code paths.
  */
 
-import type { LLMClient, LLMStreamRequest, LLMStreamHandlers } from './types';
+import type { LLMClient, LLMStreamRequest, LLMStreamHandlers, Reachability } from './types';
+import { REACHABLE } from './types';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -14,8 +15,8 @@ export class MockLLMClient implements LLMClient {
   readonly id = 'mock' as const;
   readonly displayName = 'Mock (offline)';
 
-  async isReachable(): Promise<boolean> {
-    return true; // always reachable — it's an in-process generator
+  async isReachable(): Promise<Reachability> {
+    return REACHABLE; // always reachable — it's an in-process generator
   }
 
   async streamChat(req: LLMStreamRequest, h: LLMStreamHandlers): Promise<void> {

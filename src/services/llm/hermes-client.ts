@@ -18,7 +18,8 @@
  * Both headers are no-ops on a generic OpenAI-compatible server.
  */
 
-import type { LLMClient, LLMStreamRequest, LLMStreamHandlers } from './types';
+import type { LLMClient, LLMStreamRequest, LLMStreamHandlers, Reachability } from './types';
+import { REACHABLE, NO_AUTH, DOWN, TIMEOUT, NO_CONFIG } from './types';
 import type { LLMConfig } from './config';
 
 export interface HermesRequestContext {
@@ -34,20 +35,30 @@ export class HermesGatewayClient implements LLMClient {
 
   constructor(private config: LLMConfig) {}
 
-  /** Quick reachability check — short GET to /v1/models. Treats any HTTP response as "reachable". */
-  async isReachable(): Promise<boolean> {
+  /**
+   * Reachability check. We DO NOT treat 401 as reachable — that just
+   * means the server is up but we lack a valid key. The status bar
+   * must stay honest, otherwise a broken setup looks healthy until
+   * the user actually tries to chat.
+   */
+  async isReachable(): Promise<Reachability> {
+    const url = this.healthUrl();
+    if (!url) return NO_CONFIG;
+    if (!this.config.endpoint) return NO_CONFIG;
     try {
-      const url = this.modelsUrl();
-      if (!url) return false;
       const res = await fetch(url, {
         method: 'GET',
         headers: this.headers(),
-        // Short timeout via AbortSignal — RN fetch doesn't honor `timeout` option on all platforms
         signal: AbortSignal.timeout(2500),
       } as RequestInit);
-      return res.ok || res.status < 500; // 401/403 means it's up, we just lack auth
-    } catch {
-      return false;
+      if (res.ok) return REACHABLE;
+      if (res.status === 401 || res.status === 403) return NO_AUTH;
+      if (res.status >= 500) return DOWN;
+      // 404/400 = /v1/health not supported, but server is up
+      return REACHABLE;
+    } catch (e: any) {
+      if (e?.name === 'TimeoutError' || e?.name === 'AbortError') return TIMEOUT;
+      return DOWN;
     }
   }
 
@@ -144,10 +155,18 @@ export class HermesGatewayClient implements LLMClient {
   }
 
   private modelsUrl(): string {
-    // Strip trailing /chat/completions and append /models. If endpoint is weird, fall back.
+    // /v1/models is fine to advertise but is slow on the Hermes gateway
+    // (it walks the registered model providers). For the reachability
+    // probe we use /v1/health, which is a 0-cost handler.
     if (!this.config.endpoint) return '';
     const base = this.config.endpoint.replace(/\/chat\/completions\/?$/, '');
     return `${base}/models`;
+  }
+
+  private healthUrl(): string {
+    if (!this.config.endpoint) return '';
+    const base = this.config.endpoint.replace(/\/chat\/completions\/?$/, '');
+    return `${base}/health`;
   }
 
   private headers(): Record<string, string> {

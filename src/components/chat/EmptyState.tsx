@@ -27,7 +27,7 @@ export interface QuickAction {
 
 export interface EmptyStateProps {
   /** Live Hermes gateway status. */
-  status: 'connecting' | 'idle' | 'running' | 'offline';
+  status: 'connecting' | 'idle' | 'running' | 'offline' | 'auth-needed';
   /** Latest in-flight activity label, e.g. "running: fetch_url". */
   statusDetail?: string;
   /** Tapped a quick action card. */
@@ -137,10 +137,12 @@ const StatusCard: React.FC<{ status: EmptyStateProps['status']; detail?: string 
   const accent = useTheme();
   const meta = (() => {
     switch (status) {
-      case 'connecting': return { dot: '#FBBF24', label: 'Looking for Hermes on your network…',     border: neutral.border, icon: '🛰' };
-      case 'idle':      return { dot: '#16A34A', label: 'Hermes is online and ready ✨',          border: neutral.ok,    icon: '🌸' };
-      case 'running':   return { dot: '#007AFF', label: 'Hermes is working on it',                border: '#007AFF',   icon: '⚡' };
-      case 'offline':   return { dot: '#DC2626', label: 'Hermes gateway is offline',              border: neutral.err,  icon: '💤' };
+      case 'connecting':  return { dot: '#FBBF24', label: 'Looking for Hermes on your network…',     border: neutral.border, icon: '🛰' };
+      case 'idle':        return { dot: '#16A34A', label: 'Hermes is online and ready ✨',          border: neutral.ok,    icon: '🌸' };
+      case 'running':     return { dot: '#007AFF', label: 'Hermes is working on it',                border: '#007AFF',   icon: '⚡' };
+      case 'auth-needed': return { dot: '#D97706', label: 'Hermes needs an API key — open ⚙ Settings', border: neutral.warn,  icon: '🔑' };
+      case 'offline':     return { dot: '#DC2626', label: 'Hermes gateway is offline',              border: neutral.err,  icon: '💤' };
+      default:            return { dot: '#71717A', label: '…',                                       border: neutral.border, icon: '✦' };
     }
   })();
   return (

@@ -555,7 +555,7 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = ({ onOpenDrawer
         >
           {messages.filter((m) => m.role !== 'system').length === 0 ? (
             <EmptyState
-              status={providerOk === false ? 'offline' : providerOk === null ? 'connecting' : 'idle'}
+              status={providerOk === null ? 'connecting' : providerOk.ok ? 'idle' : providerOk.status === 'no-auth' ? 'auth-needed' : 'offline'}
               onAction={(id) => {
                 if (id === 'voice') toggleVoice();
                 else if (id === 'photo') pickImage();

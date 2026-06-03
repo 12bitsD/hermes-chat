@@ -47,13 +47,37 @@ export interface LLMStreamContext {
   sessionKey?: string;
 }
 
+/**
+ * Reachability verdict.
+ *
+ * `ok` is true only when the gateway actually accepted our credentials
+ * (HTTP 2xx). 401/403 means the server is up but our key is wrong or
+ * missing — that's not "reachable", that's "talking to a wall".
+ *
+ * `status` carries the more granular state so the UI can show a
+ * specific message ("✕ auth failed — paste API_SERVER_KEY" vs.
+ * "✕ server down — is the gateway running on 8642?").
+ */
+export type Reachability = {
+  ok: boolean;
+  status: 'ok' | 'no-auth' | 'down' | 'timeout' | 'config-missing';
+  message: string;
+};
+
+export const REACHABLE: Reachability = { ok: true,  status: 'ok',         message: 'Reachable' };
+export const NO_AUTH:    Reachability = { ok: false, status: 'no-auth',    message: 'Auth failed (401) — check API key' };
+export const DOWN:       Reachability = { ok: false, status: 'down',       message: 'Server not responding' };
+export const TIMEOUT:    Reachability = { ok: false, status: 'timeout',    message: 'Probe timed out' };
+export const NO_CONFIG:  Reachability = { ok: false, status: 'config-missing', message: 'No endpoint configured' };
+
 export interface LLMClient {
   /** Provider id used in the settings UI / logs */
   readonly id: 'mock' | 'hermes-gateway' | 'openai-compatible';
   /** Human-readable provider name */
   readonly displayName: string;
-  /** Cheap, non-streaming ping used at boot to decide which provider to use */
-  isReachable(): Promise<boolean>;
+  /** Cheap, non-streaming ping used at boot to decide which provider to use.
+   *  Returns a Reachability so the UI can distinguish auth-failed from down. */
+  isReachable(): Promise<Reachability>;
   /** Start a streaming chat completion. Returns once the stream ends or errors. */
   streamChat(req: LLMStreamRequest, handlers: LLMStreamHandlers, ctx?: LLMStreamContext): Promise<void>;
   /** Optional — list available models for the model-picker UI */
