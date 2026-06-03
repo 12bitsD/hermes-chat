@@ -34,6 +34,7 @@ import { toolRiskLevel, describeToolIntent } from '../src/domain/tools/risk';
 import { publishCli, subscribeCli } from '../src/lib/hermesCliBus';
 import { dispatchChatSend, subscribeChatSend } from '../src/lib/chatSendBus';
 import { nextBackoffMs, QUEUE_MAX_RETRIES } from '../src/services/queue/messageQueue';
+import { PERSONA_PRESETS, detectActivePersona } from '../src/domain/settings/personas';
 
 // ─── 1. tool risk grading (Phase 63 #10) ─────────────────────────
 
@@ -148,4 +149,37 @@ test('messageQueue: nextBackoffMs returns 1s/4s/16s then null', () => {
 
 test('messageQueue: QUEUE_MAX_RETRIES matches design', () => {
   assert.equal(QUEUE_MAX_RETRIES, 3);
+});
+
+// ─── 4. persona presets (Phase 74) ──────────────────────────────
+
+test('personas: 4 presets, each with the required fields', () => {
+  assert.equal(PERSONA_PRESETS.length, 4);
+  for (const p of PERSONA_PRESETS) {
+    assert.ok(p.id, 'persona has id');
+    assert.ok(p.emoji, 'persona has emoji');
+    assert.ok(p.label, 'persona has label');
+    assert.ok(p.hint, 'persona has hint');
+    assert.ok(p.systemPrompt.length > 50, 'persona has a non-trivial prompt');
+  }
+});
+
+test('personas: detectActivePersona returns the matching preset', () => {
+  for (const p of PERSONA_PRESETS) {
+    const active = detectActivePersona(p.systemPrompt);
+    assert.ok(active, `detectActivePersona should match for ${p.id}`);
+    assert.equal(active!.id, p.id);
+  }
+});
+
+test('personas: detectActivePersona returns undefined for edited prompts', () => {
+  assert.equal(detectActivePersona('something the user typed from scratch'), undefined);
+  assert.equal(detectActivePersona(''), undefined);
+});
+
+test('personas: each preset has a unique id and emoji', () => {
+  const ids = new Set(PERSONA_PRESETS.map((p) => p.id));
+  const emojis = new Set(PERSONA_PRESETS.map((p) => p.emoji));
+  assert.equal(ids.size, PERSONA_PRESETS.length, 'all ids are unique');
+  assert.equal(emojis.size, PERSONA_PRESETS.length, 'all emojis are unique');
 });
