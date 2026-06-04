@@ -36,6 +36,7 @@ import { dispatchChatSend, subscribeChatSend } from '../src/lib/chatSendBus';
 import { nextBackoffMs, QUEUE_MAX_RETRIES } from '../src/services/queue/messageQueue';
 import { PERSONA_PRESETS, detectActivePersona } from '../src/domain/settings/personas';
 import { generatePairCode, freshPairCodePair } from '../src/lib/pairCode';
+import { discoverGateway } from '../src/services/llm/discover';
 
 // ─── 1. tool risk grading (Phase 63 #10) ─────────────────────────
 
@@ -220,4 +221,30 @@ test('pairCode: freshPairCodePair gives a code + future expiresAt', () => {
   assert.ok(pair.code, 'code is non-empty');
   assert.ok(pair.expiresAt > before + 50_000, 'expiresAt is ~60s in the future');
   assert.ok(pair.expiresAt <= after + 61_000, 'expiresAt is bounded');
+});
+
+// ─── 6. gateway discovery (Phase 79) ─────────────────────────────
+
+test('discoverGateway: returns no winner when no candidates respond', async () => {
+  // No mock server is up. The util should return tried=[...] with
+  // ok=false everywhere and winner=null. We don't assert on which
+  // candidates were tried (they're a function of the build target —
+  // mobile vs web) but we do assert on the shape.
+  const r = await discoverGateway();
+  assert.ok(Array.isArray(r.candidates), 'candidates is an array');
+  assert.ok(Array.isArray(r.tried), 'tried is an array');
+  assert.equal(r.tried.length, r.candidates.length, 'tried covers all candidates');
+  for (const t of r.tried) {
+    assert.ok(typeof t.base === 'string');
+    assert.equal(typeof t.ok, 'boolean');
+  }
+  assert.equal(r.winner, null, 'no winner when nothing responds');
+});
+
+test('discoverGateway: respects the overall budget (returns within ~12s)', async () => {
+  const start = Date.now();
+  await discoverGateway();
+  const elapsed = Date.now() - start;
+  // The util aborts at 10s; with a bit of slack, 12s is the worst case.
+  assert.ok(elapsed < 12_000, `discovery took ${elapsed}ms, expected < 12s`);
 });

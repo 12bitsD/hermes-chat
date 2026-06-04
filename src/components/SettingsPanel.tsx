@@ -19,7 +19,7 @@
  * a tunnel or a different machine.
  */
 
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View, Text, StyleSheet, Modal, Pressable, ScrollView, Switch,
   ActivityIndicator,
@@ -33,6 +33,7 @@ import { CAPABILITY_LABELS } from '../services/llm/capabilities';
 import { useSettingsController } from '../features/settings/useSettingsController';
 import { haptic } from '../utils/haptic';
 import { PERSONA_PRESETS, detectActivePersona } from '../domain/settings/personas';
+import { discoverGateway, type DiscoveryResult } from '../services/llm/discover';
 
 export interface SettingsPanelProps {
   open: boolean;
@@ -76,6 +77,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
     save,
   } = useSettingsController(open, onClose);
 
+  // Phase 79: gateway discovery. We scan a small set of likely URLs
+  // (127.0.0.1, hermes.local, common LAN router IPs on mobile) and
+  // report what responded. The user can then tap a hit to set the
+  // Endpoint field, or fall through to manual entry. We don't write
+  // anything to settings until the user confirms.
+  const [discovering, setDiscovering] = useState(false);
+  const [discovery, setDiscovery] = useState<DiscoveryResult | null>(null);
+  const findMyHermes = useCallback(async () => {
+    haptic('light');
+    setDiscovering(true);
+    setDiscovery(null);
+    try {
+      const r = await discoverGateway();
+      setDiscovery(r);
+      haptic(r.winner ? 'success' : 'error');
+    } finally {
+      setDiscovering(false);
+    }
+  }, []);
+
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <View style={[styles.backdrop]}>
@@ -107,13 +128,40 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
                 <Button label="Probe" onPress={probe} disabled={probing} small default />
                 <Button label="Fetch models" onPress={fetchModels} disabled={loadingModels} small ghost />
-                {probing || loadingModels ? <ActivityIndicator /> : null}
+                <Button label="Find my Hermes" onPress={findMyHermes} disabled={discovering} small ghost />
+                {probing || loadingModels || discovering ? <ActivityIndicator /> : null}
                 {probeResult ? (
                   <Text style={[styles.probeText, { color: probeResult.ok ? neutral.ok : neutral.err }]}>
                     {probeResult.msg}
                   </Text>
                 ) : null}
               </View>
+              {discovery ? (
+                <View style={styles.discoverBox}>
+                  {discovery.tried.length === 0 ? null : (
+                    <Text style={styles.discoverTitle}>
+                      {discovery.winner
+                        ? `✓ Found: ${discovery.winner}`
+                        : 'No Hermes gateway found on this network'}
+                    </Text>
+                  )}
+                  {discovery.tried.map((r) => (
+                    <Pressable
+                      key={r.base}
+                      onPress={() => { if (r.ok) { haptic('success'); setEndpoint(r.base); } }}
+                      style={({ pressed }) => [
+                        styles.discoverRow,
+                        r.ok ? styles.discoverRowOk : styles.discoverRowDown,
+                        pressed ? { opacity: 0.6 } : null,
+                      ]}
+                    >
+                      <Text style={styles.discoverRowMark}>{r.ok ? '✓' : '×'}</Text>
+                      <Text style={styles.discoverRowUrl} numberOfLines={1}>{r.base}</Text>
+                      {r.ok ? <Text style={styles.discoverRowHint}>tap to use</Text> : null}
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
               {models.length > 0 ? (
                 <View style={styles.modelStrip}>
                   {models.map((m) => (
@@ -518,6 +566,23 @@ const styles = StyleSheet.create({
   personaEmoji: { fontSize: 14 },
   personaLabel: { ...type.captionSm, color: neutral.inkSoft, fontWeight: '500' },
   personaLabelActive: { color: 'inherit', fontWeight: '600' },
+
+  // Phase 79 — Gateway discovery (Find my Hermes)
+  discoverBox: {
+    marginTop: space.sm, padding: space.sm,
+    borderWidth: 1, borderColor: neutral.border, borderRadius: radius.sm,
+    backgroundColor: neutral.bg,
+  },
+  discoverTitle: { ...type.captionSm, color: neutral.ink, fontWeight: '600', marginBottom: 6 },
+  discoverRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 4, paddingHorizontal: 6, borderRadius: radius.sm,
+  },
+  discoverRowOk: { backgroundColor: '#16A34A18' },
+  discoverRowDown: { opacity: 0.5 },
+  discoverRowMark: { width: 14, fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  discoverRowUrl: { ...type.captionSm, color: neutral.ink, flex: 1, minWidth: 0 },
+  discoverRowHint: { ...type.captionXs, color: neutral.inkMuted, fontStyle: 'italic' },
   capsItemMark: { fontSize: 14, fontWeight: '700', width: 14, textAlign: 'center' },
   capsItemMarkOn: { color: neutral.ok },
   capsItemMarkOff: { color: neutral.inkMuted },
