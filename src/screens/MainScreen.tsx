@@ -235,6 +235,7 @@ export const MainScreen: React.FC = () => {
           remoteSessions={hermesSnapshot?.sessions}
           remoteJobs={hermesSnapshot?.jobs}
           remoteSkills={hermesSnapshot?.skills}
+          remoteToolsets={hermesSnapshot?.toolsets}
           remoteGatewayReachable={!!hermesSnapshot}
           insets={insets}
         />

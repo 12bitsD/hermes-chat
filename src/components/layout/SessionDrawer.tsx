@@ -18,8 +18,9 @@ export interface SessionDrawerProps {
   onRename: (id: string, title: string) => void;
   onPickRemote?: (id: string) => void;
   remoteSessions?: { id: string; title?: string; messageCount?: number; updatedAt?: number }[];
-  remoteJobs?: { id: string }[];
+  remoteJobs?: { id: string; title?: string; state?: string; nextRunAt?: number }[];
   remoteSkills?: { id: string }[];
+  remoteToolsets?: { id: string; name?: string; tools?: string[] }[];
   remoteGatewayReachable: boolean;
   insets: { top: number; bottom: number; left: number; right: number };
 }
@@ -27,11 +28,13 @@ export interface SessionDrawerProps {
 export const SessionDrawer: React.FC<SessionDrawerProps> = ({
   open, onClose, conversations, order, activeId,
   onPick, onNew, onDelete, onPin, onRename, onPickRemote,
-  remoteSessions, remoteJobs, remoteSkills, remoteGatewayReachable,
+  remoteSessions, remoteJobs, remoteSkills, remoteToolsets, remoteGatewayReachable,
   insets,
 }) => {
   const accent = useTheme();
   const slideAnim = useRef(new Animated.Value(-1)).current;
+  type DrawerTab = 'sessions' | 'agent' | 'tools';
+  const [tab, setTab] = useState<DrawerTab>('sessions');
 
   useEffect(() => {
     Animated.timing(slideAnim, { toValue: open ? 0 : -1, duration: 200, useNativeDriver: true }).start();
@@ -75,14 +78,41 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
         ]}
       >
         <View style={styles.drawerHeader}>
-          <Text style={styles.drawerTitle}>Sessions</Text>
-          <Pressable
-            hitSlop={8}
-            onPress={onNew}
-            style={({ pressed }) => [styles.newChatBtn, pressed ? styles.newChatBtnPressed : null]}
-          >
-            <Text style={styles.newChatPlus}>＋</Text>
-          </Pressable>
+          <Text style={styles.drawerTitle}>
+            {tab === 'sessions' ? 'Sessions' : tab === 'agent' ? 'Agent' : 'Tools'}
+          </Text>
+          {tab === 'sessions' ? (
+            <Pressable
+              hitSlop={8}
+              onPress={onNew}
+              style={({ pressed }) => [styles.newChatBtn, pressed ? styles.newChatBtnPressed : null]}
+            >
+              <Text style={styles.newChatPlus}>＋</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
+        {/* Tab strip — Sessions / Agent / Tools. The decomp called
+            for a 3-section drawer to make the agent itself visible
+            as a primary surface (not just a chat list). */}
+        <View style={styles.tabStrip}>
+          {(['sessions', 'agent', 'tools'] as const).map((t) => {
+            const label = t === 'sessions' ? '💬 Sessions' : t === 'agent' ? '⚡ Agent' : '🛠 Tools';
+            const active = tab === t;
+            return (
+              <Pressable
+                key={t}
+                onPress={() => { haptic('light'); setTab(t); }}
+                style={({ pressed }) => [
+                  styles.tabBtn,
+                  active ? [styles.tabBtnActive, { backgroundColor: accent.accent.soft, borderColor: accent.accent.fg }] : null,
+                  pressed ? styles.tabBtnPressed : null,
+                ]}
+              >
+                <Text style={[styles.tabBtnText, active ? styles.tabBtnTextActive : null]}>{label}</Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         {remoteSessions ? (
@@ -96,7 +126,8 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
           </View>
         ) : null}
 
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: space.sm }}>
+        {tab === 'sessions' ? (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: space.sm }}>
           {remoteSessions && remoteSessions.length > 0 ? (
             <View style={{ marginBottom: 8 }}>
               <Text style={[styles.drawerSectionHeader, { color: accent.accent.fg }]}>
@@ -156,8 +187,82 @@ export const SessionDrawer: React.FC<SessionDrawerProps> = ({
                 : 'No sessions yet. Tap + New to start one.'}
             </Text>
           ) : null}
-        </ScrollView>
-        <Text style={styles.drawerHint}>Tap switch · long-press menu</Text>
+          </ScrollView>
+        ) : null}
+
+        {/* ── Agent tab ──────────────────────────────────────────── */}
+        {tab === 'agent' ? (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: space.sm }}>
+            <Text style={styles.drawerSectionHeader}>⚡ Active runs</Text>
+            <Text style={styles.drawerHint}>
+              Long-running tools and background work on your computer will appear here. Phase 56 wires the run state for the current chat; this tab is the multi-chat view.
+            </Text>
+            <Text style={styles.drawerSectionHeader}>📋 Jobs</Text>
+            {remoteJobs && remoteJobs.length > 0 ? (
+              remoteJobs.map((j) => (
+                <View key={j.id} style={styles.drawerItem}>
+                  <Text numberOfLines={1} style={styles.drawerItemText}>
+                    📋 {j.title || j.id}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.drawerItemMeta}>
+                    {j.state ?? 'unknown'}{j.nextRunAt ? ` · next ${timeAgo(j.nextRunAt * 1000)}` : ''}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.drawerHint}>
+                {remoteGatewayReachable ? 'No background jobs.' : 'Gateway offline — job list unavailable.'}
+              </Text>
+            )}
+            <Text style={styles.drawerSectionHeader}>✋ Pending approvals</Text>
+            <Text style={styles.drawerHint}>
+              0 pending. Approvals for the current chat arrive inline (see Phase 63 #10). Multi-chat approval inbox is a future P1.
+            </Text>
+          </ScrollView>
+        ) : null}
+
+        {/* ── Tools tab ──────────────────────────────────────────── */}
+        {tab === 'tools' ? (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: space.sm }}>
+            <Text style={styles.drawerSectionHeader}>🛠 Toolsets</Text>
+            {remoteToolsets && remoteToolsets.length > 0 ? (
+              remoteToolsets.map((ts) => (
+                <View key={ts.id} style={styles.drawerItem}>
+                  <Text numberOfLines={1} style={styles.drawerItemText}>
+                    🛠 {ts.name || ts.id}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.drawerItemMeta}>
+                    {ts.tools?.length ? `${ts.tools.length} tools` : '—'}
+                    {ts.tools?.slice(0, 4).map((t) => ` · ${t}`).join('') || ''}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.drawerHint}>
+                {remoteGatewayReachable ? 'No toolsets reported by the gateway.' : 'Gateway offline — toolset list unavailable.'}
+              </Text>
+            )}
+            <Text style={styles.drawerSectionHeader}>✨ Skills</Text>
+            {remoteSkills && remoteSkills.length > 0 ? (
+              <View style={styles.drawerItem}>
+                <Text numberOfLines={1} style={styles.drawerItemText}>
+                  {remoteSkills.length} skill{remoteSkills.length === 1 ? '' : 's'} available
+                </Text>
+                <Text numberOfLines={1} style={styles.drawerItemMeta}>
+                  Open Settings to enable / configure
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.drawerHint}>
+                {remoteGatewayReachable ? 'No skills installed.' : 'Gateway offline — skill list unavailable.'}
+              </Text>
+            )}
+          </ScrollView>
+        ) : null}
+
+        <Text style={styles.drawerHint}>
+          {tab === 'sessions' ? 'Tap switch · long-press menu' : tab === 'agent' ? 'Active work on your computer' : 'Tools your Hermes can call'}
+        </Text>
       </Animated.View>
 
       {/* Long-press menu: a small bottom-sheet modal with 3 actions
@@ -281,6 +386,16 @@ const styles = StyleSheet.create({
   drawerSectionHeader: { ...type.captionXs, color: neutral.inkMuted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, paddingHorizontal: 4, paddingBottom: 4, paddingTop: 2 },
   drawerItemRemote: { borderLeftWidth: 2, borderLeftColor: '#FBBF24' },
   drawerHint: { ...type.caption, color: neutral.inkMuted, textAlign: 'center', padding: space.sm, fontStyle: 'italic' },
+  tabStrip: { flexDirection: 'row', gap: 4, paddingHorizontal: space.sm, paddingBottom: space.sm },
+  tabBtn: {
+    flex: 1, alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8,
+    borderRadius: radius.sm, borderWidth: 1, borderColor: 'transparent',
+    backgroundColor: 'transparent',
+  },
+  tabBtnActive: { borderWidth: 1 },
+  tabBtnPressed: { opacity: 0.7, transform: [{ scale: 0.97 }] },
+  tabBtnText: { ...type.caption, color: neutral.inkSoft, fontSize: 11, fontWeight: '500' },
+  tabBtnTextActive: { fontWeight: '700' },
   pinIndicator: { fontSize: 12, marginRight: 4 },
 
   // Long-press menu sheet styles

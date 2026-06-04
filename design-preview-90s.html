@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>90s Anime Style — 复古二次元插画</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: 'Courier New', monospace;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      padding: 40px;
+      min-height: 100vh;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { 
+      font-size: 48px; 
+      font-weight: 800;
+      margin-bottom: 8px;
+      color: #ff6b9d;
+      text-shadow: 0 0 20px rgba(255, 107, 157, 0.5);
+      font-family: 'Arial', sans-serif;
+    }
+    .subtitle { 
+      color: #8a8a9a; 
+      margin-bottom: 60px; 
+      font-size: 16px;
+    }
+    .grid { 
+      display: grid; 
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); 
+      gap: 32px;
+    }
+    .card {
+      background: #2a2a3e;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 2px solid #3a3a4e;
+      transition: all 0.3s ease;
+    }
+    .card:hover {
+      border-color: #ff6b9d;
+      transform: translateY(-4px);
+      box-shadow: 0 8px 24px rgba(255, 107, 157, 0.3);
+    }
+    .card-image {
+      width: 100%;
+      height: 400px;
+      object-fit: cover;
+      display: block;
+    }
+    .card-body {
+      padding: 20px;
+    }
+    .card-name {
+      font-size: 18px;
+      font-weight: 700;
+      color: #ff6b9d;
+      margin-bottom: 8px;
+      font-family: 'Arial', sans-serif;
+    }
+    .card-era {
+      font-size: 14px;
+      color: #60a5fa;
+      margin-bottom: 8px;
+    }
+    .card-desc {
+      font-size: 13px;
+      color: #8a8a9a;
+      line-height: 1.6;
+    }
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      padding: 4px 10px;
+      background: rgba(255, 107, 157, 0.2);
+      color: #ff6b9d;
+      border-radius: 4px;
+      margin-top: 12px;
+      margin-right: 8px;
+    }
+    .features {
+      margin-top: 60px;
+      padding: 32px;
+      background: #2a2a3e;
+      border-radius: 12px;
+      border: 2px solid #3a3a4e;
+    }
+    .features h2 {
+      color: #60a5fa;
+      font-size: 24px;
+      margin-bottom: 20px;
+      font-family: 'Arial', sans-serif;
+    }
+    .features ul {
+      list-style: none;
+      padding: 0;
+    }
+    .features li {
+      color: #e0e0e0;
+      line-height: 2;
+      padding-left: 24px;
+      position: relative;
+    }
+    .features li::before {
+      content: '▸';
+      position: absolute;
+      left: 0;
+      color: #ff6b9d;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📼 90s Anime Style</h1>
+    <p class="subtitle">复古赛璐珞 · 纯人物 · 姿态为主 · 背景极简</p>
+    
+    <div class="grid">
+      <div class="card">
+        <img src="src/assets/illustrations-90s/90s-sailor-moon.png" class="card-image" alt="90s Sailor Moon">
+        <div class="card-body">
+          <div class="card-name">🌙 Sailor Moon 时代</div>
+          <div class="card-era">1992-1997 · 长发温柔</div>
+          <div class="card-desc">蓬松长发 · 大眼睛精细反射 · 柔和色调 · 宽松毛衣 · 温柔微笑</div>
+          <span class="tag">赛璐珞着色</span>
+          <span class="tag">纯白背景</span>
+        </div>
+      </div>
+      
+      <div class="card">
+        <img src="src/assets/illustrations-90s/90s-cowboy-bebop.png" class="card-image" alt="90s Cowboy Bebop">
+        <div class="card-body">
+          <div class="card-name">🚀 Cowboy Bebop 时代</div>
+          <div class="card-era">1998-1999 · 马尾酷帅</div>
+          <div class="card-desc">高马尾 · 自信表情 · 皮夹克 · 抱臂姿势 · 动态角度</div>
+          <span class="tag">酷帅风格</span>
+          <span class="tag">渐变背景</span>
+        </div>
+      </div>
+      
+      <div class="card">
+        <img src="src/assets/illustrations-90s/90s-eva.png" class="card-image" alt="90s EVA">
+        <div class="card-body">
+          <div class="card-name">⚡ EVA 时代</div>
+          <div class="card-era">1995-1996 · 短发知性</div>
+          <div class="card-desc">波波头 · 温柔眼神 · 实验服 · 剪贴板 · 微微歪头</div>
+          <span class="tag">知性风格</span>
+          <span class="tag">柔和阴影</span>
+        </div>
+      </div>
+      
+      <div class="card">
+        <img src="src/assets/illustrations-90s/90s-cardcaptor.png" class="card-image" alt="90s Cardcaptor">
+        <div class="card-body">
+          <div class="card-name">✨ 百变小樱 时代</div>
+          <div class="card-era">1998-2000 · 双马尾活泼</div>
+          <div class="card-desc">双马尾蝴蝶结 · 活泼表情 · 比耶手势 · 连衣裙 · 粉色背景</div>
+          <span class="tag">kawaii</span>
+          <span class="tag">可爱风格</span>
+        </div>
+      </div>
+      
+      <div class="card">
+        <img src="src/assets/illustrations-90s/90s-ghost-shell.png" class="card-image" alt="90s Ghost in Shell">
+        <div class="card-body">
+          <div class="card-name">🔮 攻壳机动队 时代</div>
+          <div class="card-era">1995-1997 · 长直发文艺</div>
+          <div class="card-desc">长直发 · 忧郁眼神 · 沉思表情 · 白衬衫 · 优雅姿态</div>
+          <span class="tag">文艺风格</span>
+          <span class="tag">大气氛围</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="features">
+      <h2>📼 90 年代画风特征</h2>
+      <ul>
+        <li>赛璐珞着色（Cel Shading）— 清晰色块边界，非渐变</li>
+        <li>大眼睛 + 精细反射 — 多层高光和反射</li>
+        <li>蓬松发型 — 头发有体积感，不贴头皮</li>
+        <li>柔和色调 — 不像现代 anime 那么饱和</li>
+        <li>干净线稿 — 清晰轮廓线，线条有粗细变化</li>
+        <li>人物为主 — 背景极简（纯色/渐变/简单几何）</li>
+        <li>怀旧感 — 复古滤镜，温暖色调</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>
