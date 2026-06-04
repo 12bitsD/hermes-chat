@@ -10,6 +10,7 @@ import { EmptyState } from './EmptyState';
 import { ApprovalModal } from '../ApprovalModal';
 import { QuickActionSheet } from './QuickActionSheet';
 import { useAppStore } from '../../store/app';
+import { freshPairCodePair, generatePairCode } from '../../lib/pairCode';
 import { FileCard } from './FileCard';
 import { useChatController } from '../../features/chat/useChatController';
 import { isNarrow } from '../../utils/platform';
@@ -65,6 +66,10 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = () => {
   // the current conversation (no sheet).
   type EmptySheet = 'jobs' | 'tool' | 'activity' | null;
   const [openSheet, setOpenSheet] = useState<EmptySheet>(null);
+  // Phase 78: 6-char pair code for the desktop (wide-screen) client to
+  // show and the phone to read. Regenerated every 60s or on user tap.
+  // Only shown when not narrow — the phone never pairs to itself.
+  const [pairCodeState, setPairCodeState] = useState(() => freshPairCodePair());
 
   const scrollToLastTurns = useCallback(() => {
     if (messages.length === 0) return;
@@ -132,6 +137,11 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = () => {
                   tool: toolsets.length > 0 ? String(toolsets.length) : undefined,
                   activity: recentSessions.length > 0 ? String(recentSessions.length) : undefined,
                   'last-turns': lastTurnsCount > 0 ? String(lastTurnsCount) : undefined,
+                }}
+                pairCode={{
+                  code: pairCodeState.code,
+                  expiresAt: pairCodeState.expiresAt,
+                  refresh: () => setPairCodeState({ code: generatePairCode(), expiresAt: Date.now() + 60_000 }),
                 }}
                 onAction={(id) => {
                   if (id === 'voice') toggleVoice();

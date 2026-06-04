@@ -11,7 +11,7 @@
  * composer / drawer can react without EmptyState knowing about them.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useReducer, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, Animated, Easing, ActivityIndicator } from 'react-native';
 import { neutral, type, space, radius, useTheme } from '../../theme';
 import { isNarrow } from '../../utils/platform';
@@ -41,6 +41,10 @@ export interface EmptyStateProps {
   onAction: (id: QuickActionId) => void;
   /** Optional dynamic badge text for each primary action. */
   badges?: Partial<Record<QuickActionId, string>>;
+  /** Phase 78: when not narrow (desktop), show a "Pair a new device"
+   *  card at the top with a 6-char code + 60s countdown. The phone
+   *  side reads this code and pastes it into Settings → Pair. */
+  pairCode?: { code: string; expiresAt: number; refresh: () => void } | null;
 }
 
 const PRIMARY_ACTIONS: QuickActionMeta[] = [
@@ -55,7 +59,7 @@ const SECONDARY_ACTIONS: QuickActionMeta[] = [
   { id: 'photo', position: 'secondary', label: 'Photo', hint: 'Send an image with it', emoji: '📷' },
 ];
 
-export const EmptyState: React.FC<EmptyStateProps> = ({ status, statusDetail, onAction, badges }) => {
+export const EmptyState: React.FC<EmptyStateProps> = ({ status, statusDetail, onAction, badges, pairCode }) => {
   const accent = useTheme();
   const narrow = isNarrow;
   const primary = PRIMARY_ACTIONS.map((a) => (badges?.[a.id] ? { ...a, badge: badges[a.id] } : a));
@@ -64,6 +68,13 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ status, statusDetail, on
       style={styles.root}
       contentContainerStyle={[styles.contentContainer, narrow ? styles.narrow : styles.wide]}
     >
+      {/* Phase 78: Pair a new device — only shown on wide screens
+          (Mac / desktop). The user is at the keyboard, the code stays
+          in front of them, and the phone reads it. On narrow we hide
+          it because the user is on the phone and pairing the phone to
+          itself makes no sense. */}
+      {!narrow && pairCode ? <PairCodeCard {...pairCode} /> : null}
+
       {/* Hero illustration with status overlay */}
       <View style={styles.heroWrap}>
         <SparkleRing color={accent.accent.fg} count={6} />
@@ -154,6 +165,52 @@ const ScrollViewEquivalent: React.FC<{
     <View style={contentContainerStyle}>{children}</View>
   </View>
 );
+
+// ─── Pair code (Phase 78) ──────────────────────────────────────────
+
+/**
+ * PairCodeCard — wide-screen-only. Shows a 6-character pairing code
+ * with a 60s countdown. The user (at their Mac) reads the code aloud
+ * or holds the screen up; the phone, in hermes-chat's Settings →
+ * Pair, types the same 6 chars to bind itself to this Hermes.
+ *
+ * The code is generated client-side (no round-trip needed yet) and
+ * stored in a ref so each re-render doesn't generate a new one. The
+ * parent owns `expiresAt` and `refresh` — this component is pure
+ * presentation + countdown.
+ */
+const PairCodeCard: React.FC<{ code: string; expiresAt: number; refresh: () => void }> = ({ code, expiresAt, refresh }) => {
+  const accent = useTheme();
+  const [, force] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => {
+    const t = setInterval(force, 1000);
+    return () => clearInterval(t);
+  }, []);
+  const secsLeft = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+  return (
+    <View style={[styles.pairCard, { backgroundColor: accent.accent.soft, borderColor: accent.accent.fg }]}>
+      <View style={styles.pairHeaderRow}>
+        <Text style={styles.pairHeaderEmoji}>🔗</Text>
+        <Text style={styles.pairHeader}>Pair a new device</Text>
+      </View>
+      <Text style={styles.pairHint}>
+        Open hermes-chat on your phone → ⚙ Settings → tap <Text style={{ fontWeight: '700' }}>Pair with code</Text> → enter this code:
+      </Text>
+      <Pressable
+        onPress={() => { haptic('light'); refresh(); }}
+        style={({ pressed }) => [styles.pairCodeBox, pressed ? styles.pairCodeBoxPressed : null]}
+        hitSlop={8}
+      >
+        <Text style={styles.pairCode}>{code}</Text>
+      </Pressable>
+      <Text style={styles.pairCountdown}>
+        {secsLeft > 0
+          ? `Refreshes in ${secsLeft}s · tap code to refresh now`
+          : 'Expired · tap to generate a new code'}
+      </Text>
+    </View>
+  );
+};
 
 // ─── Live status card ───────────────────────────────────────────────────────
 
@@ -382,4 +439,25 @@ const styles = StyleSheet.create({
   },
   secondaryEmoji: { fontSize: 16 },
   secondaryLabel: { ...type.caption, color: neutral.ink, fontSize: 12 },
+
+  // Phase 78 — Pair a new device card
+  pairCard: {
+    width: '100%', maxWidth: 520,
+    padding: space.md, borderRadius: radius.md, borderWidth: 1.5,
+    marginBottom: space.lg, alignItems: 'center',
+  },
+  pairHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  pairHeaderEmoji: { fontSize: 18 },
+  pairHeader: { ...type.uiBold, color: neutral.ink, fontSize: 14 },
+  pairHint: { ...type.caption, color: neutral.inkSoft, textAlign: 'center', marginBottom: space.sm },
+  pairCodeBox: {
+    paddingHorizontal: 24, paddingVertical: 14, borderRadius: radius.md,
+    backgroundColor: neutral.surface, borderWidth: 1, borderColor: neutral.border,
+  },
+  pairCodeBoxPressed: { opacity: 0.7, transform: [{ scale: 0.98 }] },
+  pairCode: {
+    fontFamily: 'Courier', fontSize: 32, fontWeight: '700',
+    letterSpacing: 6, color: neutral.ink,
+  },
+  pairCountdown: { ...type.captionSm, color: neutral.inkMuted, marginTop: space.xs, textAlign: 'center' },
 });

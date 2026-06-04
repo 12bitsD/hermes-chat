@@ -35,6 +35,7 @@ import { publishCli, subscribeCli } from '../src/lib/hermesCliBus';
 import { dispatchChatSend, subscribeChatSend } from '../src/lib/chatSendBus';
 import { nextBackoffMs, QUEUE_MAX_RETRIES } from '../src/services/queue/messageQueue';
 import { PERSONA_PRESETS, detectActivePersona } from '../src/domain/settings/personas';
+import { generatePairCode, freshPairCodePair } from '../src/lib/pairCode';
 
 // ─── 1. tool risk grading (Phase 63 #10) ─────────────────────────
 
@@ -182,4 +183,41 @@ test('personas: each preset has a unique id and emoji', () => {
   const emojis = new Set(PERSONA_PRESETS.map((p) => p.emoji));
   assert.equal(ids.size, PERSONA_PRESETS.length, 'all ids are unique');
   assert.equal(emojis.size, PERSONA_PRESETS.length, 'all emojis are unique');
+});
+
+// ─── 5. pair code (Phase 78) ─────────────────────────────────────────
+
+test('pairCode: shape is XXX-XX-XX (3+2+2 with dashes)', () => {
+  for (let i = 0; i < 20; i++) {
+    const c = generatePairCode();
+    assert.match(c, /^[A-Z]{2}-[A-Z]{2}-[0-9]{2}$/, `bad shape: ${c}`);
+  }
+});
+
+test('pairCode: never produces ambiguous chars (I, O, 0, 1)', () => {
+  for (let i = 0; i < 200; i++) {
+    const c = generatePairCode();
+    assert.ok(!c.includes('I'), `ambiguous I in: ${c}`);
+    assert.ok(!c.includes('O'), `ambiguous O in: ${c}`);
+    assert.ok(!c.includes('0'), `ambiguous 0 in: ${c}`);
+    assert.ok(!c.includes('1'), `ambiguous 1 in: ${c}`);
+  }
+});
+
+test('pairCode: codes are different across calls (with overwhelming probability)', () => {
+  const seen = new Set<string>();
+  for (let i = 0; i < 100; i++) seen.add(generatePairCode());
+  // 100 codes from a 8×21×21×21×5×8×8 ≈ 23.6M space. Collisions are
+  // vanishingly unlikely (birthday bound at 100 = ~0.02%). Allow 1
+  // for flakiness safety.
+  assert.ok(seen.size >= 99, `expected ~100 unique, got ${seen.size}`);
+});
+
+test('pairCode: freshPairCodePair gives a code + future expiresAt', () => {
+  const before = Date.now();
+  const pair = freshPairCodePair();
+  const after = Date.now();
+  assert.ok(pair.code, 'code is non-empty');
+  assert.ok(pair.expiresAt > before + 50_000, 'expiresAt is ~60s in the future');
+  assert.ok(pair.expiresAt <= after + 61_000, 'expiresAt is bounded');
 });
