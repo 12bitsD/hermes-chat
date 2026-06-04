@@ -66,11 +66,25 @@ export function useHermesSnapshot() {
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    // Phase 76: adaptive backoff. The default 30s poll is fine while
+    // the gateway is healthy. Once it goes offline we don't want to
+    // burn 5 requests/min for 20 minutes — we back off exponentially
+    // up to a 5-min cap, then reset to 30s the moment it comes back.
+    // Same pattern as messageQueue (Phase 62) but on a 30s base.
+    let consecutiveFailures = 0;
     const tick = async () => {
       const cfg: LLMConfig = buildLLMConfig(settings);
       const snap = await pollOnce(cfg);
-      if (!cancelled) setSnapshot(snap);
-      if (!cancelled) timer = setTimeout(tick, POLL_MS);
+      if (cancelled) return;
+      setSnapshot(snap);
+      if (snap === null) {
+        consecutiveFailures++;
+        const backoff = Math.min(POLL_MS * 2 ** consecutiveFailures, 5 * 60 * 1000);
+        timer = setTimeout(tick, backoff);
+      } else {
+        consecutiveFailures = 0;
+        timer = setTimeout(tick, POLL_MS);
+      }
     };
     tick();
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
