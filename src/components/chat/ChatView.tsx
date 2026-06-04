@@ -13,12 +13,14 @@ import { useAppStore } from '../../store/app';
 import { FileCard } from './FileCard';
 import { useChatController } from '../../features/chat/useChatController';
 import { isNarrow } from '../../utils/platform';
+import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 import { haptic } from '../../utils/haptic';
 import type { ToolEvent } from '../../types';
 
 export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = () => {
   const accent = useTheme();
   const scrollRef = useRef<ScrollView | null>(null);
+  const { online: deviceOnline } = useNetworkStatus();
   const {
     conversationId,
     messages,
@@ -215,17 +217,15 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = () => {
             <Text style={styles.hint} numberOfLines={1}>
               {streaming
                 ? 'Hermes is typing…'
-                : pendingFiles.length > 0
-                  ? `${pendingFiles.length} file(s) attached`
-                  : conversationId
-                    ? `→ ${settings.llmProvider === 'hermes-gateway' ? 'Hermes' : settings.llmProvider} · ${conversationId.slice(-6)}`
-                    // Phase 68: 'Press Enter to send' hint only shows
-                    // before the user has sent their first message.
-                    // After that, the Send button is the obvious
-                    // affordance and the hint just adds visual noise.
-                    : messages.some((m) => m.role === 'user') || isMobile
-                      ? ''
-                      : 'Press Enter to send'}
+                : !deviceOnline
+                  ? '📴 Offline — messages will queue and send when you\'re back'
+                  : pendingFiles.length > 0
+                    ? `${pendingFiles.length} file(s) attached`
+                    : conversationId
+                      ? `→ ${settings.llmProvider === 'hermes-gateway' ? 'Hermes' : settings.llmProvider} · ${conversationId.slice(-6)}`
+                      : messages.some((m) => m.role === 'user') || isMobile
+                        ? ''
+                        : 'Press Enter to send'}
             </Text>
             {streaming ? (
               <Button label="Stop" onPress={onStop} small />
