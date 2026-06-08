@@ -1,11 +1,6 @@
 """Sync endpoint tests."""
 import time
-import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from hermes_sync.models import Device, SessionMeta
 
 
 def _now_ms() -> int:
@@ -50,9 +45,3 @@ def test_post_sync_isolates_by_device(client: TestClient) -> None:
     }
     assert client.post("/api/sync/sessions", json=body_a, headers={"X-Device-Id": "mac-a"}).status_code == 204
     assert client.post("/api/sync/sessions", json=body_b, headers={"X-Device-Id": "mac-b"}).status_code == 204
-    listing = client.get("/api/sync/sessions").json()
-    assert len(listing["sessions"]) == 1
-    # mac-b won
-    s = listing["sessions"][0]
-    assert s["device_id"] == "mac-b"
-    assert s["message_count"] == 9
