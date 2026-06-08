@@ -123,3 +123,15 @@ async def get_session(
         preview=row.preview,
         synced_at=row.synced_at,
     )
+
+
+@router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_session(
+    session_id: str,
+    session: AsyncSession = Depends(db_session),
+) -> None:
+    row = await session.get(SessionMeta, session_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    await session.delete(row)
+    await session.commit()

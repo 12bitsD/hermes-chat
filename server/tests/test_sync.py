@@ -152,3 +152,20 @@ def test_get_single_session_returns_200(client: TestClient) -> None:
 def test_get_single_session_returns_404_when_missing(client: TestClient) -> None:
     res = client.get("/api/sync/sessions/nonexistent")
     assert res.status_code == 404
+
+
+def test_delete_session_returns_204_and_removes(client: TestClient) -> None:
+    now = _now_ms()
+    body = {
+        "device": {"id": "mac-1", "platform": "macos"},
+        "sessions": [{"id": "s1", "created_at": now, "updated_at": now, "message_count": 1}],
+    }
+    client.post("/api/sync/sessions", json=body, headers={"X-Device-Id": "mac-1"})
+    res = client.delete("/api/sync/sessions/s1")
+    assert res.status_code == 204
+    assert client.get("/api/sync/sessions/s1").status_code == 404
+
+
+def test_delete_session_returns_404_when_missing(client: TestClient) -> None:
+    res = client.delete("/api/sync/sessions/ghost")
+    assert res.status_code == 404
