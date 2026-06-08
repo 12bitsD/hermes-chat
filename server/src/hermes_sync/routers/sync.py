@@ -1,14 +1,15 @@
 """/api/sync/* — session metadata catalog endpoints."""
 import time
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hermes_sync.deps import db_session, require_device_id
 from hermes_sync.models import Device, SessionMeta
-from hermes_sync.schemas import SyncPushIn
+from hermes_sync.schemas import SessionOut, SyncPushIn, SyncPullOut
 
 router = APIRouter(prefix="/api/sync", tags=["sync"])
 
@@ -74,3 +75,31 @@ async def push_sessions(
             await session.delete(await session.get(SessionMeta, existing_id))
 
     await session.commit()
+
+
+@router.get("/sessions", response_model=SyncPullOut)
+async def pull_sessions(
+    limit: int = Query(50, ge=1, le=200),
+    since: int | None = Query(None, description="ms epoch; only return updated_at > since"),
+    session: AsyncSession = Depends(db_session),
+) -> SyncPullOut:
+    """Phone pulls the catalog."""
+    stmt = select(SessionMeta).order_by(SessionMeta.updated_at.desc()).limit(limit)
+    if since is not None:
+        stmt = stmt.where(SessionMeta.updated_at > since)
+    rows = (await session.execute(stmt)).scalars().all()
+    out = [
+        SessionOut(
+            id=r.id,
+            device_id=r.device_id,
+            device_name=r.device.name if r.device else None,
+            title=r.title,
+            created_at=r.created_at,
+            updated_at=r.updated_at,
+            message_count=r.message_count,
+            preview=r.preview,
+            synced_at=r.synced_at,
+        )
+        for r in rows
+    ]
+    return SyncPullOut(sessions=out, server_ts=int(time.time() * 1000))
