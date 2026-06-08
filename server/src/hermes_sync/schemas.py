@@ -34,7 +34,9 @@ class SessionIn(BaseModel):
 
 
 class SessionOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    # No `from_attributes=True` — `device_name` derives from `device.name`,
+    # not a SessionMeta attr, and Pydantic would silently default to None.
+    # Routers construct this manually (see Tasks 10/11).
 
     id: str
     device_id: str
