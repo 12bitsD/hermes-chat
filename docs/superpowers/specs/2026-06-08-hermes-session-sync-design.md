@@ -44,6 +44,36 @@ backend in `/server/` of this monorepo. After conversation:
 - Real-time push to phone (V1 uses polling).
 - Hermes-as-upstream: the backend doesn't proxy to or call Hermes
   (only the Mac-side daemon does, to read its own session list).
+- **Hermes discovery**: phone finding Mac on the network.
+- **CORS proxying** for the web variant.
+- **Cross-network tunneling** (e.g. phone-on-cellular → Mac-at-home).
+- **Pair-code authority** (Phase 78b lives on Hermes, not here).
+
+## Boundaries Confirmation (2026-06-08)
+
+Confirmed in chat with the owner:
+
+1. **Backend is OFF the critical chat path.** Chat (send message →
+   receive response) is a direct phone → Hermes HTTP connection.
+   The backend is never in this path. If the backend is down, chat
+   still works.
+2. **V1 backend does exactly one thing**: cross-device session
+   metadata catalog. Mac pushes, phone pulls, SQLite persists.
+3. **All "hard" connection problems are out of V1 scope**:
+   discovery (mDNS / IP / pair code → Hermes URL), CORS (web
+   variant), cross-network (Tailscale / tunnel), pair-code
+   authority. These are owned by **Hermes + client** in later
+   phases (Phase 78b, 79+).
+4. **Connect-to-Hermes story in V1**: user manually enters Mac LAN
+   IP in Settings. This is the existing flow. V1 doesn't change
+   it; V1 just documents it in the README "Connect to Hermes"
+   section so users know what to do.
+5. **Pair code is a Hermes-side feature** (per
+   `src/lib/pairCode.ts:21-24` comment). It will route via Hermes
+   (Phase 78b), not via this backend.
+
+If any of (1)-(5) changes, this spec is invalidated and a new one
+is needed.
 
 ## Architecture
 
