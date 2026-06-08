@@ -29,6 +29,10 @@ import type { LLMConfig } from './config';
 import type { Reachability } from './types';
 import { REACHABLE, NO_AUTH, DOWN, TIMEOUT, NO_CONFIG } from './types';
 import { gatewayV1Url } from './url';
+
+const SSE_DONE = Symbol('sse-done');
+type ParsedSseLine = RunEvent | typeof SSE_DONE | null;
+
 export type RunEvent =
   | { event: 'message.delta'; run_id: string; timestamp: number; delta: string }
   | { event: 'tool.started'; run_id: string; timestamp: number; tool: string; preview?: string }
@@ -96,10 +100,13 @@ export class HermesRunsClient {
       signal: req.signal,
     } as RequestInit);
     if (!res.ok) {
-      const txt = await res.text().catch(() => '');
+      const txt = await responseText(res);
       throw new Error(`Failed to start run: ${res.status} ${txt || res.statusText}`);
     }
     const json: any = await res.json();
+    if (typeof json?.run_id !== 'string' || !json.run_id) {
+      throw new Error('Failed to start run: response missing run_id');
+    }
     return json.run_id;
   }
 
@@ -116,7 +123,7 @@ export class HermesRunsClient {
       signal,
     } as RequestInit);
     if (!res.ok || !res.body) {
-      const txt = await res.text().catch(() => '');
+      const txt = await responseText(res);
       throw new Error(`Event stream failed: ${res.status} ${txt || res.statusText}`);
     }
     const reader = (res.body as ReadableStream<Uint8Array>).getReader();
@@ -128,21 +135,19 @@ export class HermesRunsClient {
         return;
       }
       const { value, done } = await reader.read();
-      if (done) return;
+      if (done) {
+        const parsed = this.parseSseLine(runId, buf);
+        if (parsed && parsed !== SSE_DONE) yield parsed;
+        return;
+      }
       buf += decoder.decode(value, { stream: true });
       let nl: number;
       while ((nl = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, nl).trim();
         buf = buf.slice(nl + 1);
-        if (!line || !line.startsWith('data:')) continue;
-        const payload = line.slice(5).trim();
-        if (payload === '[DONE]') return;
-        try {
-          const json = JSON.parse(payload);
-          yield this.parseEvent(runId, json);
-        } catch {
-          yield { event: 'raw', data: payload };
-        }
+        const parsed = this.parseSseLine(runId, line);
+        if (parsed === SSE_DONE) return;
+        if (parsed) yield parsed;
       }
     }
   }
@@ -159,7 +164,7 @@ export class HermesRunsClient {
   /** Resolve a pending approval. The agent will continue. */
   async resolveApproval(runId: string, approvalId: string, decision: 'approve' | 'deny', note?: string): Promise<void> {
     const url = `${this.runsUrl()}/${encodeURIComponent(runId)}/approval`;
-    await fetch(url, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: this.headers({}),
       body: JSON.stringify({
@@ -167,7 +172,11 @@ export class HermesRunsClient {
         decision,
         note,
       }),
-    } as RequestInit).catch(() => undefined);
+    } as RequestInit);
+    if (!res.ok) {
+      const txt = await responseText(res);
+      throw new Error(`Failed to resolve approval: ${res.status} ${txt || res.statusText}`);
+    }
   }
 
   /** Poll the current run status (idempotent, non-streaming). */
@@ -183,14 +192,32 @@ export class HermesRunsClient {
     const ts = json?.timestamp ?? Date.now() / 1000;
     switch (ev) {
       case 'message.delta':
-        return { event: 'message.delta', run_id: runId, timestamp: ts, delta: json.delta ?? '' };
+        if (typeof json.delta !== 'string') {
+          return protocolError(runId, ts, 'Invalid message.delta event: missing delta');
+        }
+        return { event: 'message.delta', run_id: runId, timestamp: ts, delta: json.delta };
       case 'tool.started':
-        return { event: 'tool.started', run_id: runId, timestamp: ts, tool: json.tool ?? '?', preview: json.preview };
+        if (!isNonEmptyString(json.tool)) {
+          return protocolError(runId, ts, 'Invalid tool.started event: missing tool');
+        }
+        return { event: 'tool.started', run_id: runId, timestamp: ts, tool: json.tool, preview: json.preview };
       case 'tool.completed':
-        return { event: 'tool.completed', run_id: runId, timestamp: ts, tool: json.tool ?? '?', duration: json.duration ?? 0, error: !!json.error };
+        if (!isNonEmptyString(json.tool)) {
+          return protocolError(runId, ts, 'Invalid tool.completed event: missing tool');
+        }
+        return { event: 'tool.completed', run_id: runId, timestamp: ts, tool: json.tool, duration: json.duration ?? 0, error: !!json.error };
       case 'reasoning.available':
-        return { event: 'reasoning.available', run_id: runId, timestamp: ts, text: json.text ?? '' };
+        if (typeof json.text !== 'string') {
+          return protocolError(runId, ts, 'Invalid reasoning.available event: missing text');
+        }
+        return { event: 'reasoning.available', run_id: runId, timestamp: ts, text: json.text };
       case 'approval.required':
+        if (!isNonEmptyString(json.approval_id)) {
+          return protocolError(runId, ts, 'Invalid approval.required event: missing approval_id');
+        }
+        if (!isNonEmptyString(json.tool)) {
+          return protocolError(runId, ts, 'Invalid approval.required event: missing tool');
+        }
         return {
           event: 'approval.required',
           run_id: runId,
@@ -208,6 +235,19 @@ export class HermesRunsClient {
         return { event: 'stopped', run_id: runId, timestamp: ts, reason: json.reason ?? '' };
       default:
         return { event: 'raw', run_id: runId, timestamp: ts, data: json };
+    }
+  }
+
+  private parseSseLine(runId: string, line: string): ParsedSseLine {
+    const trimmed = line.trim();
+    if (!trimmed || !trimmed.startsWith('data:')) return null;
+    const payload = trimmed.slice(5).trim();
+    if (payload === '[DONE]') return SSE_DONE;
+    try {
+      const json = JSON.parse(payload);
+      return this.parseEvent(runId, json);
+    } catch {
+      return protocolError(runId, Date.now() / 1000, 'Invalid run event payload: malformed JSON');
     }
   }
 
@@ -245,3 +285,24 @@ export type RunStreamCallbacks = {
   onFailed: (message: string) => void;
   onStopped: (reason: string) => void;
 };
+
+async function responseText(res: Response): Promise<string> {
+  try {
+    return await res.text();
+  } catch {
+    return '';
+  }
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function protocolError(runId: string, timestamp: number, message: string): RunEvent {
+  return {
+    event: 'failed',
+    run_id: runId,
+    timestamp,
+    error: { message },
+  };
+}

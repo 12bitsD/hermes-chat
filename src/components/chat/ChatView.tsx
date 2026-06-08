@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Platform,
   KeyboardAvoidingView, TextInput, Animated, Easing,
@@ -82,14 +82,21 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = () => {
   const hermesSnapshot = useAppStore((s) => s.hermesSnapshot);
   const conversations = useAppStore((s) => s.conversations);
   const setActiveConversation = useAppStore((s) => s.setActiveConversation);
-  const recentSessions = (hermesSnapshot?.sessions ?? [])
-    .filter((s) => Date.now() - (s.updatedAt ?? 0) < 60 * 60 * 1000)
-    .slice(0, 8);
-  const failedOrQueuedJobs = (hermesSnapshot?.jobs ?? [])
-    .filter((j) => j.state === 'failed' || j.state === 'queued')
-    .slice(0, 8);
-  const toolsets = (hermesSnapshot?.toolsets ?? []).slice(0, 12);
-  const lastTurnsCount = Math.max(0, messages.length - 1);
+  const recentSessions = useMemo(() => {
+    const now = Date.now();
+    return (hermesSnapshot?.sessions ?? [])
+      .filter((s) => now - (s.updatedAt ?? 0) < 60 * 60 * 1000)
+      .slice(0, 8);
+  }, [hermesSnapshot?.sessions]);
+  const failedOrQueuedJobs = useMemo(() => (
+    (hermesSnapshot?.jobs ?? [])
+      .filter((j) => j.state === 'failed' || j.state === 'queued')
+      .slice(0, 8)
+  ), [hermesSnapshot?.jobs]);
+  const toolsets = useMemo(() => (
+    (hermesSnapshot?.toolsets ?? []).slice(0, 12)
+  ), [hermesSnapshot?.toolsets]);
+  const lastTurnsCount = useMemo(() => Math.max(0, messages.length - 1), [messages.length]);
 
   useEffect(() => {
     if (messages.length > 0) stickToBottom();
@@ -102,7 +109,16 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = () => {
     }
   }, [messages, scheduleStickToBottom, stickToBottom]);
 
-  const visibleMessages = messages.filter((message) => message.role !== 'system');
+  const visibleMessages = useMemo(
+    () => messages.filter((message) => message.role !== 'system'),
+    [messages],
+  );
+  const activeTools = useMemo(() => (
+    streaming
+      ? (messages.find((message) => message.status === 'streaming')?.toolEvents ?? [])
+        .filter((tool) => tool.status === 'running')
+      : []
+  ), [messages, streaming]);
   const isMobile = isNarrow;
 
   return (
@@ -118,9 +134,7 @@ export const ChatView: React.FC<{ onOpenDrawer?: () => void }> = () => {
             pendingApproval={pendingApproval}
             runStartedAtRef={activeRunStartedAtRef}
             onStop={onStop}
-            activeTools={streaming
-              ? (messages.find((message) => message.status === 'streaming')?.toolEvents ?? []).filter((tool) => tool.status === 'running')
-              : []}
+            activeTools={activeTools}
           />
           <ScrollView
             ref={scrollRef}
