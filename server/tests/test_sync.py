@@ -135,3 +135,20 @@ def test_post_sync_isolates_by_device(client: TestClient) -> None:
     s = listing["sessions"][0]
     assert s["device_id"] == "mac-b"
     assert s["message_count"] == 9
+
+
+def test_get_single_session_returns_200(client: TestClient) -> None:
+    now = _now_ms()
+    body = {
+        "device": {"id": "mac-1", "platform": "macos"},
+        "sessions": [{"id": "s1", "title": "T", "created_at": now, "updated_at": now, "message_count": 1}],
+    }
+    client.post("/api/sync/sessions", json=body, headers={"X-Device-Id": "mac-1"})
+    res = client.get("/api/sync/sessions/s1")
+    assert res.status_code == 200
+    assert res.json()["id"] == "s1"
+
+
+def test_get_single_session_returns_404_when_missing(client: TestClient) -> None:
+    res = client.get("/api/sync/sessions/nonexistent")
+    assert res.status_code == 404

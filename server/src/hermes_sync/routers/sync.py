@@ -102,3 +102,24 @@ async def pull_sessions(
         for r in rows
     ]
     return SyncPullOut(sessions=out, server_ts=int(time.time() * 1000))
+
+
+@router.get("/sessions/{session_id}", response_model=SessionOut)
+async def get_session(
+    session_id: str,
+    session: AsyncSession = Depends(db_session),
+) -> SessionOut:
+    row = await session.get(SessionMeta, session_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    return SessionOut(
+        id=row.id,
+        device_id=row.device_id,
+        device_name=row.device.name if row.device else None,
+        title=row.title,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        message_count=row.message_count,
+        preview=row.preview,
+        synced_at=row.synced_at,
+    )
