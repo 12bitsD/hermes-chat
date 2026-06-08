@@ -3,13 +3,14 @@ import { Alert, Keyboard, Platform } from 'react-native';
 import { STICK_TO_BOTTOM_MS } from '../../config/app-constants';
 import { dispatchChatSend, subscribeChatSend } from '../../lib/chatSendBus';
 import { publishCli } from '../../lib/hermesCliBus';
-import { enqueue, list as listQueued, dequeue, bumpRetry, nextBackoffMs } from '../../services/queue/messageQueue';
 import { toolRiskLevel } from '../../domain/tools/risk';
 import { buildChatHistory } from '../../domain/chat/history';
 import { makeAssistantMessage, makeUserMessage } from '../../domain/chat/messages';
-import { pickFile, type PickedFile } from '../attachments/filePicker';
+import { isAttachmentKind, pickFile, type PickedFile } from '../attachments/filePicker';
 import { createHermesPort, createSessionsClient, buildLLMConfig } from '../../services/llm/factory';
 import { runChatTurn } from './chatTurnService';
+import { flushQueuedTurns, queueOfflineTurn } from './offlineQueue';
+import { appendReasoningEvent, appendToolStarted, completeLatestRunningTool } from './toolEvents';
 import { useAppStore } from '../../store/app';
 import { getLLMClient } from '../../store/persistence';
 import { haptic } from '../../utils/haptic';
@@ -28,6 +29,32 @@ function getCurrentToolEvents(conversationId: string, messageId: string) {
   if (!c) return [];
   const m = c.messages.find((x) => x.id === messageId);
   return m?.toolEvents ?? [];
+}
+
+function attachmentsFromFiles(files: PickedFile[]) {
+  return files.map((file) => ({
+    id: file.uri,
+    name: file.name,
+    kind: file.kind,
+    size: file.size,
+    uri: file.uri,
+    previewUri: file.kind === 'image' ? file.uri : undefined,
+  }));
+}
+
+function pickedFilesFromUnknown(files: unknown[] | undefined): PickedFile[] {
+  return (files ?? []).filter((file): file is PickedFile => {
+    if (!file || typeof file !== 'object') return false;
+    const candidate = file as Partial<PickedFile>;
+    return typeof candidate.name === 'string'
+      && typeof candidate.size === 'number'
+      && typeof candidate.uri === 'string'
+      && isAttachmentKind(candidate.kind);
+  });
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function useChatController() {
@@ -200,7 +227,12 @@ export function useChatController() {
   // subscriber closure, so the bus is wired once on mount instead
   // of re-subscribing on every render. The ref is initialised to
   // null and filled in by the effect below (after `send` is defined).
-  const sendRef = useRef<((text: string, opts?: { appendUserMessage?: boolean; files?: PickedFile[] }) => Promise<void> | null)>(null);
+  const sendRef = useRef<((text: string, opts?: {
+    appendUserMessage?: boolean;
+    userMessageId?: string;
+    assistantMessageId?: string;
+    files?: PickedFile[];
+  }) => Promise<void> | null)>(null);
   const streamingRef = useRef(streaming);
   streamingRef.current = streaming;
   useEffect(() => {
@@ -211,7 +243,14 @@ export function useChatController() {
       if (!text) return { ok: false, reason: 'empty-text' };
       // Fire-and-forget — the bus caller wants immediate ack, not full turn.
       const send = sendRef.current;
-      if (send) void send(text, { appendUserMessage: true, files: [] });
+      if (send) {
+        void send(text, {
+          appendUserMessage: req.opts?.appendUserMessage ?? true,
+          userMessageId: req.opts?.userMessageId,
+          assistantMessageId: req.opts?.assistantMessageId,
+          files: pickedFilesFromUnknown(req.opts?.files),
+        });
+      }
       else return { ok: false, reason: 'controller-not-ready' };
       return { ok: true };
     });
@@ -240,14 +279,22 @@ export function useChatController() {
   const resolveApproval = useCallback(async (decision: 'approve' | 'deny', note?: string) => {
     if (!pendingApproval) return;
     const { runId, approvalId } = pendingApproval;
-    setPendingApproval(null);
-    if (!useRunsMode) return;
-    const port = createHermesPort(llmConfig, getLLMClient());
-    await port.resolveApproval(runId, approvalId, decision, note).catch(() => undefined);
-    if (decision === 'deny') {
-      await port.stopRun(runId).catch(() => undefined);
+    if (!useRunsMode) {
+      setPendingApproval(null);
+      return;
     }
-    haptic(decision === 'approve' ? 'success' : 'warning');
+    const port = createHermesPort(llmConfig, getLLMClient());
+    try {
+      await port.resolveApproval(runId, approvalId, decision, note);
+      setPendingApproval(null);
+      if (decision === 'deny') {
+        await port.stopRun(runId).catch(() => undefined);
+      }
+      haptic(decision === 'approve' ? 'success' : 'warning');
+    } catch (error) {
+      setStreamError(`Approval failed: ${errorMessage(error)}`);
+      haptic('error');
+    }
   }, [pendingApproval, useRunsMode, llmConfig]);
 
   const syncFromHermes = useCallback(async () => {
@@ -268,12 +315,13 @@ export function useChatController() {
 
   const send = useCallback(async (
     overrideText?: string,
-    opts: { appendUserMessage?: boolean; files?: PickedFile[] } = {},
+    opts: { appendUserMessage?: boolean; userMessageId?: string; assistantMessageId?: string; files?: PickedFile[] } = {},
   ) => {
     const text = (overrideText ?? input).trim();
     if (!text || streaming || !conversationId) return;
     const appendUserMessage = opts.appendUserMessage ?? true;
     const files = opts.files ?? pendingFiles;
+    let turnUserMessageId = opts.userMessageId ?? null;
 
     abortRef.current?.abort();
     Keyboard.dismiss();
@@ -282,20 +330,26 @@ export function useChatController() {
 
     if (appendUserMessage) {
       const userMsg = makeUserMessage(text);
-      if (files.length > 0) {
-        userMsg.attachments = files.map((file) => ({
-          id: file.uri,
-          name: file.name,
-          kind: file.kind,
-          size: file.size,
-          uri: file.uri,
-          previewUri: file.kind === 'image' ? file.uri : undefined,
-        }));
-      }
+      if (files.length > 0) userMsg.attachments = attachmentsFromFiles(files);
+      turnUserMessageId = userMsg.id;
       appendMessage(conversationId, userMsg);
     }
-    const assistantMsg = makeAssistantMessage('');
-    appendMessage(conversationId, assistantMsg);
+
+    const assistantMsg = opts.assistantMessageId ? null : makeAssistantMessage('');
+    const assistantMessageId = opts.assistantMessageId ?? assistantMsg?.id;
+    if (!assistantMessageId) return;
+    if (assistantMsg) {
+      appendMessage(conversationId, assistantMsg);
+    } else {
+      updateMessage(conversationId, assistantMessageId, {
+        content: '',
+        status: 'streaming',
+        toolEvents: [],
+      });
+    }
+    if (!appendUserMessage && turnUserMessageId) {
+      updateMessage(conversationId, turnUserMessageId, { status: 'done' });
+    }
     if (appendUserMessage) setPendingFiles([]);
 
     setStreaming(true);
@@ -306,11 +360,25 @@ export function useChatController() {
 
     const historyMessages = buildChatHistory(
       useAppStore.getState().getActiveMessages(),
-      { systemPrompt, skipMessageId: assistantMsg.id },
+      { systemPrompt, skipMessageId: assistantMessageId },
     );
 
+    const queueTurn = async () => {
+      const queued = await queueOfflineTurn({
+        conversationId,
+        userMessageId: turnUserMessageId,
+        assistantMessageId,
+        text,
+        files,
+        updateMessage,
+        setStreamError,
+      });
+      if (queued) haptic('warning');
+      return queued;
+    };
+
     try {
-      await runChatTurn(
+      const turnResult = await runChatTurn(
         createHermesPort(llmConfig, getLLMClient()),
         {
           conversationId,
@@ -331,29 +399,22 @@ export function useChatController() {
             publishCli({ type: 'run:started', conversationId, runId });
           },
           onTextFlush: (content) => {
-            updateMessage(conversationId, assistantMsg.id, { content });
+            updateMessage(conversationId, assistantMessageId, { content });
           },
           onToolStarted: (event) => {
-            const toolEv = {
-              id: `${event.runId}-${event.timestamp}`,
-              tool: event.tool,
-              status: 'running' as const,
-              startedAt: event.timestamp * 1000,
-              preview: event.preview,
-            };
-            updateMessage(conversationId, assistantMsg.id, {
-              toolEvents: [...getCurrentToolEvents(conversationId, assistantMsg.id), toolEv],
+            updateMessage(conversationId, assistantMessageId, {
+              toolEvents: appendToolStarted(
+                getCurrentToolEvents(conversationId, assistantMessageId),
+                event,
+              ),
             });
             publishCli({ type: 'tool:started', runId: event.runId, tool: event.tool, preview: event.preview });
           },
           onToolCompleted: (event) => {
-            const existing = getCurrentToolEvents(conversationId, assistantMsg.id);
-            const updated = existing.map((tool) =>
-              tool.tool === event.tool && tool.status === 'running'
-                ? { ...tool, status: event.error ? ('error' as const) : ('done' as const), finishedAt: event.timestamp * 1000, durationMs: event.duration * 1000 }
-                : tool,
-            );
-            updateMessage(conversationId, assistantMsg.id, { toolEvents: updated });
+            const existing = getCurrentToolEvents(conversationId, assistantMessageId);
+            updateMessage(conversationId, assistantMessageId, {
+              toolEvents: completeLatestRunningTool(existing, event),
+            });
             publishCli({
               type: 'tool:completed',
               runId: activeRunIdRef.current ?? `${conversationId}-${Date.now()}`,
@@ -363,19 +424,11 @@ export function useChatController() {
             });
           },
           onReasoning: (event) => {
-            const existing = getCurrentToolEvents(conversationId, assistantMsg.id);
-            updateMessage(conversationId, assistantMsg.id, {
-              toolEvents: [
-                ...existing,
-                {
-                  id: `${event.runId}-reasoning-${event.timestamp}`,
-                  tool: 'reasoning',
-                  status: 'done' as const,
-                  startedAt: event.timestamp * 1000,
-                  finishedAt: event.timestamp * 1000,
-                  preview: event.text,
-                },
-              ],
+            updateMessage(conversationId, assistantMessageId, {
+              toolEvents: appendReasoningEvent(
+                getCurrentToolEvents(conversationId, assistantMessageId),
+                event,
+              ),
             });
           },
           onApprovalRequired: (event) => {
@@ -396,7 +449,18 @@ export function useChatController() {
               });
               // fire-and-forget; the run continues
               const port = createHermesPort(llmConfig, getLLMClient());
-              void port.resolveApproval(event.runId, event.approvalId, 'approve').catch(() => undefined);
+              void port.resolveApproval(event.runId, event.approvalId, 'approve').catch((error) => {
+                setPendingApproval({
+                  runId: event.runId,
+                  approvalId: event.approvalId,
+                  prompt: event.prompt,
+                  tool: event.tool,
+                  args: event.args,
+                });
+                updateMessage(conversationId, assistantMessageId, { status: 'awaiting-approval' });
+                setStreamError(`Auto-approval failed: ${errorMessage(error)}`);
+                haptic('warning');
+              });
               return;
             }
             setPendingApproval({
@@ -406,7 +470,7 @@ export function useChatController() {
               tool: event.tool,
               args: event.args,
             });
-            updateMessage(conversationId, assistantMsg.id, { status: 'awaiting-approval' });
+            updateMessage(conversationId, assistantMessageId, { status: 'awaiting-approval' });
             publishCli({
               type: 'approval:required',
               runId: event.runId,
@@ -416,17 +480,19 @@ export function useChatController() {
             });
           },
           onDone: (finalText) => {
-            updateMessage(conversationId, assistantMsg.id, { content: finalText, status: 'done' });
+            updateMessage(conversationId, assistantMessageId, { content: finalText, status: 'done' });
+            if (turnUserMessageId) updateMessage(conversationId, turnUserMessageId, { status: 'done' });
             haptic('success');
             const runId = activeRunIdRef.current ?? `${conversationId}-${Date.now()}`;
             publishCli({ type: 'run:completed', conversationId, runId, content: finalText });
           },
           onStopped: (finalText) => {
-            updateMessage(conversationId, assistantMsg.id, { content: finalText, status: 'done' });
+            updateMessage(conversationId, assistantMessageId, { content: finalText, status: 'done' });
+            if (turnUserMessageId) updateMessage(conversationId, turnUserMessageId, { status: 'done' });
           },
           onError: (message, accumulated, options) => {
             if (options?.surface) setStreamError(message);
-            updateMessage(conversationId, assistantMsg.id, {
+            updateMessage(conversationId, assistantMessageId, {
               content: accumulated + (accumulated ? '\n\n' : '') + `**Error**: ${message}`,
               status: 'error',
             });
@@ -440,39 +506,18 @@ export function useChatController() {
           },
         },
       );
-    } catch (err: any) {
-      // Network failure (TypeError) → enqueue the user message so
-      // we can retry it the next time the browser reports `online`.
-      // Anything else (server 4xx/5xx, JSON parse, etc.) stays in
-      // the existing `run:failed` path so the user sees the error
-      // immediately and can fix it.
-      const isNetwork = err instanceof TypeError || /network|fetch/i.test(String(err?.message ?? err));
-      if (isNetwork) {
-        const userMsg = makeUserMessage(text);
-        if (files.length > 0) {
-          userMsg.attachments = files.map((file) => ({
-            id: file.uri,
-            name: file.name,
-            kind: file.kind,
-            size: file.size,
-            uri: file.uri,
-            previewUri: file.kind === 'image' ? file.uri : undefined,
-          }));
-          userMsg.status = 'queued';
+
+      if (turnResult.outcome === 'error' && turnResult.queueableNetworkError) {
+        const queued = await queueTurn();
+        if (!queued) {
+          setStreamError('Offline — reconnect and try again.');
+          haptic('warning');
         }
-        // mark assistant bubble as queued (will be filled on retry)
-        updateMessage(conversationId, assistantMsg.id, {
-          content: '⏳ Queued — waiting for connection…',
-          status: 'queued',
-        });
-        enqueue({
-          id: userMsg.id,
-          conversationId,
-          text,
-          files: files.map((f) => ({ ...f })),
-        }).catch(() => undefined);
-        setStreamError('Offline — message will resend automatically when you reconnect.');
-        haptic('warning');
+      }
+    } catch (err: any) {
+      const isNetwork = err instanceof TypeError || /network|fetch/i.test(String(err?.message ?? err));
+      if (isNetwork && await queueTurn()) {
+        // queued by the explicit offline path
       } else {
         setStreamError(err?.message ?? 'Send failed');
         haptic('error');
@@ -507,53 +552,15 @@ export function useChatController() {
   // exponential backoff; drops entries that hit MAX_RETRIES.
   const flushQueueRef = useRef<(() => Promise<void>) | null>(null);
   flushQueueRef.current = async () => {
-    if (streaming) return;
-    const items = await listQueued();
-    if (items.length === 0) return;
-    for (const entry of items) {
-      const backoff = nextBackoffMs(entry);
-      if (backoff === null) {
-        // exhausted retries — mark as failed-queued in the bubble
-        const conv = useAppStore.getState().conversations[entry.conversationId];
-        if (conv) {
-          const last = conv.messages[conv.messages.length - 1];
-          if (last?.status === 'queued') {
-            useAppStore.getState().updateMessage(entry.conversationId, last.id, {
-              content: '❌ Couldn\'t reconnect after 3 tries. Tap to retry.',
-              status: 'failed-queued',
-            });
-          }
-        }
-        await dequeue(entry.id);
-        continue;
-      }
-      // Replay the message by dispatching it through the same bus
-      // that the composer uses. The bus subscriber will reuse the
-      // `send` callback, which will now hit the network and either
-      // succeed (dequeue) or re-enqueue (handled in send's catch).
-      if (entry.conversationId !== useAppStore.getState().activeConversationId) {
-        useAppStore.getState().setActiveConversation(entry.conversationId);
-        // give React a tick to mount the new conversation before sending
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      const ok = await dispatchChatSend({ text: entry.text, opts: { files: entry.files } });
-      if (ok.ok) {
-        await dequeue(entry.id);
-        // mark the bubble as streaming so the user sees activity
-        const conv = useAppStore.getState().conversations[entry.conversationId];
-        if (conv) {
-          const last = conv.messages[conv.messages.length - 1];
-          if (last?.status === 'queued' || last?.status === 'failed-queued') {
-            useAppStore.getState().updateMessage(entry.conversationId, last.id, {
-              content: '',
-              status: 'streaming',
-            });
-          }
-        }
-      } else {
-        await bumpRetry(entry.id);
-      }
-    }
+    const getState = useAppStore.getState;
+    await flushQueuedTurns({
+      isStreaming: () => streamingRef.current,
+      getActiveConversationId: () => getState().activeConversationId,
+      getConversation: (id) => getState().conversations[id],
+      setActiveConversation: (id) => getState().setActiveConversation(id),
+      updateMessage: (id, messageId, patch) => getState().updateMessage(id, messageId, patch),
+      dispatchSend: dispatchChatSend,
+    });
   };
 
   // Flush on app start (if anything is queued) and on browser

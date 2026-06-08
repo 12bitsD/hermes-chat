@@ -58,16 +58,110 @@ export interface ChatTurnCallbacks {
   onFallback?: (error: unknown) => void;
 }
 
+export interface ChatTurnResult {
+  outcome: 'done' | 'stopped' | 'error';
+  fallbackUsed: boolean;
+  runStarted: boolean;
+  queueableNetworkError: boolean;
+}
+
+const DONE_RESULT: ChatTurnResult = {
+  outcome: 'done',
+  fallbackUsed: false,
+  runStarted: false,
+  queueableNetworkError: false,
+};
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isNetworkError(error: unknown): boolean {
+  return error instanceof TypeError || /network|fetch|failed to fetch|timeout/i.test(messageOf(error));
+}
+
+function looksLikeUnsupportedRuns(error: unknown): boolean {
+  return /Failed to start run:\s*(400|404|405|501)\b/i.test(messageOf(error));
+}
+
+function shouldFallbackToChat(error: unknown, state: { runStarted: boolean; sawRunEvent: boolean; hasContent: boolean }) {
+  if (state.runStarted || state.sawRunEvent || state.hasContent) return false;
+  return looksLikeUnsupportedRuns(error) || isNetworkError(error);
+}
+
+async function runChatCompletionFallback(
+  port: HermesPort,
+  req: ChatTurnRequest,
+  callbacks: ChatTurnCallbacks,
+  fallbackUsed: boolean,
+  helpers: {
+    appendChunk: (chunk: string) => void;
+    clearFlush: () => void;
+    getAccumulated: () => string;
+  },
+): Promise<ChatTurnResult> {
+  const fallbackCtrl = new AbortController();
+  const onOuterAbort = () => fallbackCtrl.abort();
+  req.signal.addEventListener('abort', onOuterAbort, { once: true });
+  let fallbackError: unknown = null;
+  try {
+    await port.streamChat(
+      {
+        conversationId: req.conversationId,
+        messages: req.historyMessages,
+        signal: fallbackCtrl.signal,
+        maxTokens: req.maxTokens,
+        temperature: req.temperature,
+      },
+      {
+        onChunk: (chunk) => {
+          if (fallbackCtrl.signal.aborted) return;
+          helpers.appendChunk(chunk);
+        },
+        onDone: () => {
+          helpers.clearFlush();
+          callbacks.onDone(helpers.getAccumulated());
+        },
+        onError: (err) => {
+          fallbackError = err;
+          helpers.clearFlush();
+          callbacks.onError(err?.message ?? String(err), helpers.getAccumulated());
+        },
+      },
+      { sessionId: req.conversationId, sessionKey: req.sessionKey },
+    );
+  } finally {
+    req.signal.removeEventListener('abort', onOuterAbort);
+  }
+
+  if (fallbackError) {
+    return {
+      outcome: 'error',
+      fallbackUsed,
+      runStarted: false,
+      queueableNetworkError: isNetworkError(fallbackError),
+    };
+  }
+
+  return {
+    outcome: 'done',
+    fallbackUsed,
+    runStarted: false,
+    queueableNetworkError: false,
+  };
+}
+
 export async function runChatTurn(
   port: HermesPort,
   req: ChatTurnRequest,
   callbacks: ChatTurnCallbacks,
-): Promise<void> {
+): Promise<ChatTurnResult> {
   const flushMs = req.flushMs ?? STREAM_FLUSH_MS;
   let acc = '';
   let pendingAcc = '';
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let activeRunId: string | null = null;
+  let sawRunEvent = false;
 
   const clearFlush = () => {
     if (flushTimer) {
@@ -83,10 +177,24 @@ export async function runChatTurn(
     }
   };
   const scheduleFlush = throttle(() => flush(), flushMs);
+  const appendChunk = (chunk: string) => {
+    acc += chunk;
+    pendingAcc = acc;
+    scheduleFlush();
+  };
 
   try {
+    if (!req.useRunsMode) {
+      return runChatCompletionFallback(
+        port,
+        req,
+        callbacks,
+        false,
+        { appendChunk, clearFlush, getAccumulated: () => acc },
+      );
+    }
+
     try {
-      if (!req.useRunsMode) throw new Error('user disabled runs mode');
       activeRunId = await port.startRun({
         input: req.input,
         instructions: req.instructions,
@@ -100,10 +208,9 @@ export async function runChatTurn(
 
       for await (const ev of port.subscribeRunEvents(activeRunId, req.signal)) {
         if (req.signal.aborted) break;
+        sawRunEvent = true;
         if (ev.event === 'message.delta') {
-          acc += ev.delta;
-          pendingAcc = acc;
-          scheduleFlush();
+          appendChunk(ev.delta);
         } else if (ev.event === 'tool.started') {
           callbacks.onToolStarted?.({
             runId: activeRunId,
@@ -121,15 +228,16 @@ export async function runChatTurn(
         } else if (ev.event === 'completed') {
           clearFlush();
           callbacks.onDone(ev.final_response || acc);
-          return;
+          return { ...DONE_RESULT, runStarted: true };
         } else if (ev.event === 'failed') {
           clearFlush();
           callbacks.onError(ev.error.message, acc);
-          return;
+          return { outcome: 'error', fallbackUsed: false, runStarted: true, queueableNetworkError: false };
         } else if (ev.event === 'stopped') {
           clearFlush();
-          callbacks.onStopped?.(acc) ?? callbacks.onDone(acc);
-          return;
+          if (callbacks.onStopped) callbacks.onStopped(acc);
+          else callbacks.onDone(acc);
+          return { outcome: 'stopped', fallbackUsed: false, runStarted: true, queueableNetworkError: false };
         } else if (ev.event === 'approval.required') {
           callbacks.onApprovalRequired?.({
             runId: activeRunId,
@@ -150,55 +258,47 @@ export async function runChatTurn(
       clearFlush();
       if (acc) {
         callbacks.onDone(acc);
+        return { ...DONE_RESULT, runStarted: true };
       } else {
         callbacks.onError('run stream closed before any content arrived', acc);
+        return { outcome: 'error', fallbackUsed: false, runStarted: true, queueableNetworkError: false };
       }
-      return;
     } catch (error) {
-      if (req.signal.aborted) return;
+      if (req.signal.aborted) return { outcome: 'stopped', fallbackUsed: false, runStarted: !!activeRunId, queueableNetworkError: false };
+      if (!shouldFallbackToChat(error, { runStarted: !!activeRunId, sawRunEvent, hasContent: !!acc })) {
+        clearFlush();
+        callbacks.onError(messageOf(error), acc, { surface: true });
+        return {
+          outcome: 'error',
+          fallbackUsed: false,
+          runStarted: !!activeRunId,
+          queueableNetworkError: false,
+        };
+      }
+
       callbacks.onFallback?.(error);
 
-      const fallbackCtrl = new AbortController();
-      const onOuterAbort = () => fallbackCtrl.abort();
-      req.signal.addEventListener('abort', onOuterAbort, { once: true });
       if (activeRunId) {
         port.stopRun(activeRunId).catch(() => undefined);
         activeRunId = null;
       }
-      try {
-        await port.streamChat(
-          {
-            conversationId: req.conversationId,
-            messages: req.historyMessages,
-            signal: fallbackCtrl.signal,
-            maxTokens: req.maxTokens,
-            temperature: req.temperature,
-          },
-          {
-            onChunk: (chunk) => {
-              if (fallbackCtrl.signal.aborted) return;
-              acc += chunk;
-              pendingAcc = acc;
-              scheduleFlush();
-            },
-            onDone: () => {
-              clearFlush();
-              callbacks.onDone(acc);
-            },
-            onError: (err) => {
-              clearFlush();
-              callbacks.onError(err?.message ?? String(err), acc);
-            },
-          },
-          { sessionId: req.conversationId, sessionKey: req.sessionKey },
-        );
-      } finally {
-        req.signal.removeEventListener('abort', onOuterAbort);
-      }
+      return runChatCompletionFallback(
+        port,
+        req,
+        callbacks,
+        true,
+        { appendChunk, clearFlush, getAccumulated: () => acc },
+      );
     }
   } catch (error: any) {
     clearFlush();
-    if (req.signal.aborted) return;
+    if (req.signal.aborted) return { outcome: 'stopped', fallbackUsed: false, runStarted: !!activeRunId, queueableNetworkError: false };
     callbacks.onError(error?.message ?? String(error), acc, { surface: true });
+    return {
+      outcome: 'error',
+      fallbackUsed: false,
+      runStarted: !!activeRunId,
+      queueableNetworkError: isNetworkError(error) && !activeRunId,
+    };
   }
 }
