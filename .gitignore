@@ -21,3 +21,11 @@ android/app/build/
 *.aab
 *.ipa
 coverage/
+
+# Python (server/)
+server/.venv/
+server/*.db
+server/*.db-journal
+server/.pytest_cache/
+server/.ruff_cache/
+server/.mypy_cache/
