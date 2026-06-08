@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import sys
 import time
 from typing import Any, Protocol
 
@@ -125,7 +124,6 @@ def main() -> int:
 
     device_id = args.device_id
     if not device_id:
-        import json
         from pathlib import Path
         cfg_dir = Path.home() / ".hermes_sync"
         cfg_dir.mkdir(parents=True, exist_ok=True)

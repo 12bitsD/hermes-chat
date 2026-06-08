@@ -1,6 +1,5 @@
 """Daemon tests — focus on transform_for_backend (pure function) and run_once with mocks."""
 import time
-from typing import Any
 from unittest.mock import patch, MagicMock
 
 from hermes_sync.partner.daemon import transform_for_backend, run_once
