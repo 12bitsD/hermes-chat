@@ -2,6 +2,8 @@
 import time
 from unittest.mock import patch, MagicMock
 
+from fastapi.testclient import TestClient
+
 from hermes_sync.partner.daemon import transform_for_backend, run_once
 
 
@@ -85,3 +87,75 @@ def test_run_once_returns_false_when_hermes_unreachable() -> None:
     fake_hermes.list_sessions.side_effect = RuntimeError("connection refused")
     ok = run_once(fake_hermes, "http://backend", device_id="mac-1", device_name="Studio")
     assert ok is False
+
+
+def test_end_to_end_daemon_pushes_into_backend(client: TestClient) -> None:
+    """Spin up a fake Hermes on a local port, run one daemon cycle, assert backend has the rows."""
+    import threading
+    import http.server
+    import socketserver
+    import json
+    from hermes_sync.partner.daemon import _HermesClient, run_once
+
+    fake_sessions = [
+        {"id": "s1", "title": "From Fake Hermes", "created_at": 1, "updated_at": 2, "message_count": 3},
+        {"id": "s2", "title": "Another", "created_at": 3, "updated_at": 4, "message_count": 0,
+         "messages": [{"role": "user", "content": "hello world"}]},
+    ]
+    body = json.dumps(fake_sessions).encode()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            if self.path == "/api/sessions":
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self.send_response(404)
+                self.end_headers()
+        def log_message(self, format, *args):  # noqa: A002
+            pass
+
+    import uvicorn
+    import socket
+    with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
+        port = httpd.server_address[1]
+        host = f"http://127.0.0.1:{port}"
+        server_thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        server_thread.start()
+
+        backend_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        backend_sock.bind(("127.0.0.1", 0))
+        backend_sock.listen()
+        backend_port = backend_sock.getsockname()[1]
+        config = uvicorn.Config(
+            client.app, fd=backend_sock.fileno(), log_level="warning"
+        )
+        server = uvicorn.Server(config)
+        backend_thread = threading.Thread(target=server.run, daemon=True)
+        backend_thread.start()
+        # wait for uvicorn to start
+        for _ in range(50):
+            if server.started:
+                break
+            time.sleep(0.02)
+        backend_url = f"http://127.0.0.1:{backend_port}"
+
+        hermes = _HermesClient(host)
+        try:
+            ok = run_once(hermes, backend_url, device_id="mac-fake", device_name="Fake")
+        finally:
+            hermes.close()
+        assert ok is True
+        httpd.shutdown()
+        server.should_exit = True
+        server_thread.join()
+        backend_thread.join()
+        backend_sock.close()
+
+    res = client.get("/api/sync/sessions").json()
+    assert {s["id"] for s in res["sessions"]} == {"s1", "s2"}
+    s2 = next(s for s in res["sessions"] if s["id"] == "s2")
+    assert s2["preview"] == "hello world"
