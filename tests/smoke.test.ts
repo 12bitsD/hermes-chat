@@ -37,6 +37,8 @@ import { nextBackoffMs, QUEUE_MAX_RETRIES } from '../src/services/queue/messageQ
 import { PERSONA_PRESETS, detectActivePersona } from '../src/domain/settings/personas';
 import { generatePairCode, freshPairCodePair } from '../src/lib/pairCode';
 import { discoverGateway } from '../src/services/llm/discover';
+import { HermesRunsClient } from '../src/services/llm/runs-client';
+import { appendReasoningEvent, appendToolStarted, completeLatestRunningTool } from '../src/features/chat/toolEvents';
 
 // ─── 1. tool risk grading (Phase 63 #10) ─────────────────────────
 
@@ -153,7 +155,197 @@ test('messageQueue: QUEUE_MAX_RETRIES matches design', () => {
   assert.equal(QUEUE_MAX_RETRIES, 3);
 });
 
-// ─── 4. persona presets (Phase 74) ──────────────────────────────
+// ─── 4. tool event projection ───────────────────────────────────
+
+test('toolEvents: completing a repeated tool updates only the latest running event', () => {
+  const first = appendToolStarted([], {
+    runId: 'r1',
+    timestamp: 10,
+    tool: 'read_file',
+  });
+  const second = appendToolStarted(first, {
+    runId: 'r1',
+    timestamp: 11,
+    tool: 'read_file',
+  });
+
+  const completed = completeLatestRunningTool(second, {
+    timestamp: 12,
+    tool: 'read_file',
+    duration: 0.25,
+    error: false,
+  });
+
+  assert.equal(completed[0].status, 'running');
+  assert.equal(completed[1].status, 'done');
+  assert.equal(completed[1].finishedAt, 12_000);
+  assert.equal(completed[1].durationMs, 250);
+});
+
+test('toolEvents: reasoning appends a completed pseudo-tool event', () => {
+  const events = appendReasoningEvent([], {
+    runId: 'r1',
+    timestamp: 20,
+    text: 'thinking about files',
+  });
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].tool, 'reasoning');
+  assert.equal(events[0].status, 'done');
+  assert.equal(events[0].preview, 'thinking about files');
+});
+
+// ─── 5. runs approval boundary ──────────────────────────────────
+
+test('runsClient: resolveApproval rejects non-2xx responses', async () => {
+  const originalFetch = globalThis.fetch;
+  (globalThis as any).fetch = async () => new Response('approval is gone', { status: 409, statusText: 'Conflict' });
+  try {
+    const client = new HermesRunsClient({
+      provider: 'hermes-gateway',
+      endpoint: 'http://localhost:8642',
+      apiKey: '',
+      defaultModel: 'default',
+    });
+    await assert.rejects(
+      () => client.resolveApproval('run-1', 'approval-1', 'approve'),
+      /Failed to resolve approval: 409 approval is gone/,
+    );
+  } finally {
+    (globalThis as any).fetch = originalFetch;
+  }
+});
+
+test('runsClient: resolveApproval sends the explicit decision payload', async () => {
+  const originalFetch = globalThis.fetch;
+  let capturedUrl = '';
+  let capturedBody = '';
+  (globalThis as any).fetch = async (url: string, init: RequestInit) => {
+    capturedUrl = url;
+    capturedBody = String(init.body);
+    return new Response('{}', { status: 200 });
+  };
+  try {
+    const client = new HermesRunsClient({
+      provider: 'hermes-gateway',
+      endpoint: 'http://localhost:8642',
+      apiKey: '',
+      defaultModel: 'default',
+    });
+    await client.resolveApproval('run-1', 'approval-1', 'deny', 'not safe');
+    assert.match(capturedUrl, /\/v1\/runs\/run-1\/approval$/);
+    assert.deepEqual(JSON.parse(capturedBody), {
+      approval_id: 'approval-1',
+      decision: 'deny',
+      note: 'not safe',
+    });
+  } finally {
+    (globalThis as any).fetch = originalFetch;
+  }
+});
+
+test('runsClient: malformed approval.required becomes a failed event', () => {
+  const client = new HermesRunsClient({
+    provider: 'hermes-gateway',
+    endpoint: 'http://localhost:8642',
+    apiKey: '',
+    defaultModel: 'default',
+  });
+  const event = (client as any).parseEvent('run-1', {
+    event: 'approval.required',
+    timestamp: 42,
+    tool: 'shell',
+    prompt: 'approve?',
+  });
+
+  assert.equal(event.event, 'failed');
+  assert.equal(event.run_id, 'run-1');
+  assert.equal(event.timestamp, 42);
+  assert.match(event.error.message, /missing approval_id/);
+});
+
+test('runsClient: malformed tool.completed becomes a failed event', () => {
+  const client = new HermesRunsClient({
+    provider: 'hermes-gateway',
+    endpoint: 'http://localhost:8642',
+    apiKey: '',
+    defaultModel: 'default',
+  });
+  const event = (client as any).parseEvent('run-1', {
+    event: 'tool.completed',
+    timestamp: 43,
+    duration: 0.1,
+  });
+
+  assert.equal(event.event, 'failed');
+  assert.match(event.error.message, /missing tool/);
+});
+
+test('runsClient: malformed SSE JSON becomes a failed event', async () => {
+  const originalFetch = globalThis.fetch;
+  (globalThis as any).fetch = async () => new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('data: {not-json}\n'));
+        controller.close();
+      },
+    }),
+    { status: 200 },
+  );
+  try {
+    const client = new HermesRunsClient({
+      provider: 'hermes-gateway',
+      endpoint: 'http://localhost:8642',
+      apiKey: '',
+      defaultModel: 'default',
+    });
+    const events = [];
+    for await (const event of client.subscribeEvents('run-1')) {
+      events.push(event);
+    }
+    assert.equal(events.length, 1);
+    assert.equal(events[0].event, 'failed');
+    assert.match(events[0].error.message, /malformed JSON/);
+  } finally {
+    (globalThis as any).fetch = originalFetch;
+  }
+});
+
+test('runsClient: final SSE line is processed without trailing newline', async () => {
+  const originalFetch = globalThis.fetch;
+  (globalThis as any).fetch = async () => new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('data: {"event":"completed","timestamp":44,"final_response":"done"}'));
+        controller.close();
+      },
+    }),
+    { status: 200 },
+  );
+  try {
+    const client = new HermesRunsClient({
+      provider: 'hermes-gateway',
+      endpoint: 'http://localhost:8642',
+      apiKey: '',
+      defaultModel: 'default',
+    });
+    const events = [];
+    for await (const event of client.subscribeEvents('run-1')) {
+      events.push(event);
+    }
+    assert.equal(events.length, 1);
+    assert.deepEqual(events[0], {
+      event: 'completed',
+      run_id: 'run-1',
+      timestamp: 44,
+      final_response: 'done',
+    });
+  } finally {
+    (globalThis as any).fetch = originalFetch;
+  }
+});
+
+// ─── 6. persona presets (Phase 74) ──────────────────────────────
 
 test('personas: 4 presets, each with the required fields', () => {
   assert.equal(PERSONA_PRESETS.length, 4);
@@ -186,7 +378,7 @@ test('personas: each preset has a unique id and emoji', () => {
   assert.equal(emojis.size, PERSONA_PRESETS.length, 'all emojis are unique');
 });
 
-// ─── 5. pair code (Phase 78) ─────────────────────────────────────────
+// ─── 7. pair code (Phase 78) ─────────────────────────────────────────
 
 test('pairCode: shape is XXX-XX-XX (3+2+2 with dashes)', () => {
   for (let i = 0; i < 20; i++) {
@@ -223,7 +415,7 @@ test('pairCode: freshPairCodePair gives a code + future expiresAt', () => {
   assert.ok(pair.expiresAt <= after + 61_000, 'expiresAt is bounded');
 });
 
-// ─── 6. gateway discovery (Phase 79) ─────────────────────────────
+// ─── 8. gateway discovery (Phase 79) ─────────────────────────────
 
 test('discoverGateway: returns no winner when no candidates respond', async () => {
   // No mock server is up. The util should return tried=[...] with
