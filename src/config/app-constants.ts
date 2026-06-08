@@ -14,8 +14,13 @@ export const SYNTHETIC_STREAM_CHUNK_SIZE = 30;
 export const SYNTHETIC_STREAM_TICK_MS = 16;
 export const STICK_TO_BOTTOM_MS = 120;
 export const WELCOME_AUTO_DISMISS_MS = 8_000;
+export const QUEUE_CONVERSATION_SWITCH_SETTLE_MS = 50;
 
 export const NARROW_BREAKPOINT = 768;
 
 export const STORAGE_KEY = 'hermes-chat:state:v1';
 export const WELCOME_SEEN_STORAGE_KEY = 'hermes-chat:welcome-seen';
+
+export const OFFLINE_QUEUE_NOTICE = 'Offline — message will resend automatically when you reconnect.';
+export const OFFLINE_QUEUE_ASSISTANT_TEXT = '⏳ Queued — waiting for connection…';
+export const OFFLINE_QUEUE_FAILED_TEXT = '❌ Couldn\'t reconnect after 3 tries. Tap to retry.';

@@ -4,6 +4,7 @@ import * as FileSystem from 'expo-file-system';
 import type { Attachment } from '../../types';
 
 export type AttachmentKind = Attachment['kind'];
+export const ATTACHMENT_KINDS: readonly AttachmentKind[] = ['pdf', 'ppt', 'image', 'text', 'other'];
 
 export interface PickedFile {
   name: string;
@@ -12,6 +13,10 @@ export interface PickedFile {
   kind: AttachmentKind;
   previewContent?: string;
   mimeType?: string;
+}
+
+export function isAttachmentKind(kind: unknown): kind is AttachmentKind {
+  return typeof kind === 'string' && (ATTACHMENT_KINDS as readonly string[]).includes(kind);
 }
 
 export async function pickFile(): Promise<PickedFile | null> {

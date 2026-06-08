@@ -4,10 +4,9 @@
  *
  * Why this exists
  * ───────────────
- * The chat controller's `send` already retries on `TypeError` (network
- * error) via the runs-mode → chat-completions fallback. But when both
- * endpoints are unreachable (no wifi, server down, tunnel closed), the
- * user has no recourse — the message is gone.
+ * The chat turn service classifies network failures explicitly. When the
+ * active endpoint is unreachable (no wifi, server down, tunnel closed), the
+ * chat feature persists the turn here instead of dropping the message.
  *
  * This module persists the message text + attachments + conversation
  * id so the next time the browser fires an `online` event, we can
@@ -30,9 +29,9 @@
  * - Triggers: app start (if queue non-empty), window 'online' event,
  *   manual `flushAll()` from the error bar.
  * - Order: FIFO (oldest first).
- * - Per-item: try send; on success, dequeue + mark message as
- *   'streaming' in the store. On failure, increment retry counter
- *   and re-queue (or drop to 'failed-queued' after 3 tries).
+ * - Per-item: wait for retry backoff, replay through the chat send bus,
+ *   then dequeue accepted sends or bump retry count. Exhausted entries
+ *   are marked 'failed-queued'.
  *
  * Failure mode distinction (Phase 62 R3)
  * ───────────────────────────────────────
@@ -51,6 +50,8 @@ const RETRY_BACKOFF_MS = [1000, 4000, 16000]; // 1s, 4s, 16s
 export interface QueuedMessage {
   /** Local message id (matches Message.id in the store). */
   id: string;
+  /** Assistant bubble reserved for the retried response, if one was already rendered. */
+  assistantMessageId?: string;
   /** Conversation id (activeConversationId at the time of enqueue). */
   conversationId: string;
   /** Text body. */

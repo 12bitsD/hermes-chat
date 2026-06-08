@@ -21,6 +21,9 @@ export interface ChatSendRequest {
   opts?: {
     conversationId?: string;
     silent?: boolean;
+    appendUserMessage?: boolean;
+    userMessageId?: string;
+    assistantMessageId?: string;
     files?: unknown[];
   };
 }
