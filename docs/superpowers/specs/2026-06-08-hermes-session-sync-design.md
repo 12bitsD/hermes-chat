@@ -188,13 +188,19 @@ No auth. No DB write.
 ### `POST /api/sync/sessions`
 
 Mac daemon pushes the full list of its sessions. Backend upserts:
-- For each session in payload: INSERT or UPDATE `session_meta` row
-  where `id == payload.id`, **scoped to the pushing device** (the
-  device_id is in the request body, identified by `X-Device-Id` header
-  on first call, then recorded on the device row).
-- After upserting, **delete any `session_meta` rows for that device
-  whose `id` is not in the payload** (so a Mac-deleted session
-  disappears from the catalog).
+- **Device identity** comes from the `X-Device-Id` request header
+  (required). The body's `device.id` MUST equal the header; if it
+  doesn't, return `400`. The body's `device.name` and
+  `device.platform` are upserted onto the `devices` row (created
+  lazily on first POST).
+- For each session in `payload.sessions`: INSERT or UPDATE
+  `session_meta` row where `id == session.id` AND `device_id ==
+  X-Device-Id` (PK is `id` alone in V1, so if a different device
+  pushes the same `id`, the row is **transferred** — last-writer-wins
+  on device_id).
+- After upserting, **delete any `session_meta` rows for that
+  `X-Device-Id` whose `id` is not in the payload** (so a
+  Mac-deleted session disappears from the catalog).
 
 **Request body**:
 ```json
@@ -217,10 +223,15 @@ Mac daemon pushes the full list of its sessions. Backend upserts:
 }
 ```
 
-**Response**: `204 No Content` (or `200` with `{"accepted": N,
-"deleted": M}` for visibility — pick one, doesn't matter for V1).
+**Headers**:
+- `X-Device-Id: <uuid>` — required, must match `body.device.id`
+- `Content-Type: application/json`
 
-**Auth**: V1 none. Daemon sets `X-Device-Id` header on every POST.
+**Response**: `204 No Content` (success), `400` (header/body device
+mismatch), `422` (validation error).
+
+**Auth**: V1 none. `X-Device-Id` is identification, not
+authentication. Anyone can POST anything in V1.
 
 ### `GET /api/sync/sessions`
 
