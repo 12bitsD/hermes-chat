@@ -87,14 +87,14 @@ def test_get_sync_supports_limit_and_since(client: TestClient) -> None:
         ],
     }
     client.post("/api/sync/sessions", json=body, headers={"X-Device-Id": "mac-1"})
-    # Limit
     res = client.get("/api/sync/sessions?limit=2").json()
     assert len(res["sessions"]) == 2
-    # Since: pick a midpoint and only newer should come back
     midpoint = now - 5 * 1000
     res = client.get(f"/api/sync/sessions?since={midpoint}").json()
+    assert res["sessions"] == []
+    midpoint = now - 7500
+    res = client.get(f"/api/sync/sessions?since={midpoint}").json()
     ids = {s["id"] for s in res["sessions"]}
-    # Sessions with updated_at > midpoint: s3, s4 (updated_at = now-3k, now-2k)
     assert ids == {"s3", "s4"}
 
 

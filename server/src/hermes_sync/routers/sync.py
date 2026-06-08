@@ -1,6 +1,5 @@
 """/api/sync/* — session metadata catalog endpoints."""
 import time
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select

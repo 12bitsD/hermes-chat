@@ -4,11 +4,11 @@ from collections.abc import AsyncIterator
 from fastapi import Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hermes_sync.db import SessionLocal
+from hermes_sync import db
 
 
 async def db_session() -> AsyncIterator[AsyncSession]:
-    async with SessionLocal() as session:
+    async with db.SessionLocal() as session:
         try:
             yield session
         except Exception:
